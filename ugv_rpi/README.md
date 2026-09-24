@@ -1,115 +1,133 @@
-![GitHub top language](https://img.shields.io/github/languages/top/effectsmachine/ugv_rpi) ![GitHub language count](https://img.shields.io/github/languages/count/effectsmachine/ugv_rpi)
-![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/effectsmachine/ugv_rpi)
-![GitHub repo size](https://img.shields.io/github/repo-size/effectsmachine/ugv_rpi) ![GitHub](https://img.shields.io/github/license/effectsmachine/ugv_rpi) ![GitHub last commit](https://img.shields.io/github/last-commit/effectsmachine/ugv_rpi)
+![GitHub top language](https://img.shields.io/github/languages/top/waveshareteam/WAVEGO_Pro) ![GitHub language count](https://img.shields.io/github/languages/count/waveshareteam/WAVEGO_Pro) ![GitHub](https://img.shields.io/github/license/waveshareteam/WAVEGO_Pro) ![GitHub last commit](https://img.shields.io/github/last-commit/waveshareteam/WAVEGO_Pro)
 
-# Waveshare UGV Robots
-This is a Raspberry Pi example for the [Waveshare](https://www.waveshare.com/) UGV robots: **WAVE ROVER**, **UGV Rover**, **UGV Beast**, **RaspRover**, **UGV01**, **UGV02**.  
+# WAVEGO Pro — Raspberry Pi Upper Computer (`ugv_rpi`)
 
-![](./media/UGV-Rover-details-23.jpg)
+Flask + WebRTC + OpenCV/MediaPipe application that runs on the Raspberry Pi (Pi 4B / Pi 5) mounted on the WAVEGO Pro quadruped. It streams video, runs AI vision modes, serves the browser control UI, and drives the ESP32 mainboard over UART JSON.
 
-## Basic Description
-The Waveshare UGV robots utilize both an upper computer and a lower computer. This repository contains the program running on the upper computer, which is typically a Raspberry Pi in this setup.  
+The ESP32 lower computer lives in [`../wavego_pro_platformio/`](../wavego_pro_platformio/README.md). The full command protocol reference is [`../wavego_pro_instruction_table.xlsx`](../wavego_pro_instruction_table.xlsx) / `.json`.
 
-The program running on the lower computer is either named [ugv_base_ros](https://github.com/effectsmachine/ugv_base_ros.git) or [ugv_base_general](https://github.com/effectsmachine/ugv_base_general.git) depending on the type of robot driver being used.  
+## Usage
 
-The upper computer communicates with the lower computer (the robot's driver based on ESP32) by sending JSON commands via GPIO UART. The host controller, which employs a Raspberry Pi, handles AI vision and strategy planning, while the sub-controller, utilizing an ESP32, manages motion control and sensor data processing. This setup ensures efficient collaboration and enhanced performance.
+### Install (from a clean Raspberry Pi OS Bookworm)
 
-## Features
-- Real-time video based on WebRTC
-- Interactive tutorial based on JupyterLab
-- Pan-tilt camera control
-- Robotic arm control
-- Cross-platform web application base on Flask
-- Auto targeting (OpenCV)
-- Object Recognition (OpenCV)
-- Gesture Recognition (MediaPipe)
-- Face detection (OpenCV & MediaPipe)
-- Motion detection (OpenCV)
-- Line tracking base on vision (OpenCV)
-- Color Recognition (OpenCV)
-- Multi-threaded CV processing
-- Audio interactive
-- Shortcut key control
-- Photo taking
-- Video Recording
-
-## Quick Install
-You need to install Raspberry Pi on your robot if you are using **WAVE ROVER**, **UGV01** or **UGV02**.  
-
-This app is already installed in the SD card of **UGV Rover**, **UGV Beast** and **RaspRover**.  
-
-You can use this tutorial to upgrade your robot's upper computer program.  
-
-You can use this tutorial to install this program on a pure Raspberry Pi OS.  
-
-
-### Download the repo from github
-
-You can clone this repository from Waveshare's GitHub to your local machine.
-
-    git clone https://github.com/waveshareteam/ugv_rpi.git
-    
-### Grant execution permission to the installation script
-    cd ugv_rpi/
-    sudo chmod +x setup.sh
-    sudo chmod +x autorun.sh
-### Install app (it'll take a while before finish)
-    sudo ./setup.sh
-### Autorun setup
-    ./autorun.sh
-### AccessPopup installation
-    cd AccessPopup
-    sudo chmod +x installconfig.sh
-    sudo ./installconfig.sh
-    *Input 1: Install AccessPopup
-    *Press any key to exit
-    *Input 9: Exit installconfig.sh
-### Reboot Device
+    cd WAVEGO_Pro/ugv_rpi/
+    sudo chmod +x setup.sh autorun.sh
+    sudo ./setup.sh          # venv + requirements + services (takes a while)
+    ./autorun.sh             # enable boot autorun
+    cd AccessPopup && sudo chmod +x installconfig.sh && sudo ./installconfig.sh
+    #   -> 1 (install), any key, 9 (exit)
     sudo reboot
 
-After powering on the robot, the Raspberry Pi will automatically establish a hotspot, and the LED screen will display a series of system initialization messages:  
+Or flash the prebuilt WAVEGO image — see the [root README](../README.md) install section.
 
-![](./media/RaspRover-LED-screen.png)
-- The first line `E` displays the IP address of the Ethernet port, which allows remote access to the Raspberry Pi. If it shows No Ethernet, it indicates that the Raspberry Pi is not connected to an Ethernet cable.
-- The second line `W` indicates the robot's wireless mode. In Access Point (AP) mode, the robot automatically sets up a hotspot with the default IP address `192.168.50.5`. In Station (STA) mode, the Raspberry Pi connects to a known WiFi network and displays the IP address for remote access.
-- The third line `F/J` specifies the Ethernet port numbers. Port `5000` provides access to the robot control Web UI, while port `8888` grants access to the JupyterLab interface.
-- The fourth line `STA` indicates that the WiFi is in Station (STA) mode. The time value represents the duration of robot usage. The dBm value indicates the signal strength RSSI in STA mode.  
+### Run / stop
 
+The app auto-starts on boot (`app.py`). Manual control:
 
-You can access the robot web app using a mobile phone or PC. Simply open your browser and enter `[IP]:5000` (for example, `192.168.10.50:5000`) in the URL bar to control the robot.  
+    cd ugv_rpi && source ugv-env/bin/activate
+    python app.py            # Flask-SocketIO on 0.0.0.0:5000
 
-To access JupyterLab, use `[IP]:8888` (for example, `192.168.10.50:8888`).  
+### Access
 
-If the robot is not connected to a known WiFi network, it will automatically set up a hotspot named "`AccessPopup`" with the password `1234567890`. You can then use a mobile phone or PC to connect to this hotspot. Once connected, open your browser and enter `192.168.50.5:5000` in the URL bar to control the robot.  
+- **Web UI**: `http://<robot-ip>:5000` — movement pad, StayLow / HandShake / Jump / STEADY buttons, RGB presets, JSON console, CV mode buttons, photo/video galleries
+- **JupyterLab tutorials**: `http://<robot-ip>:8888`
+- **Hotspot fallback**: if no known WiFi is found, AccessPopup opens `AccessPopup` / `1234567890` with the UI at `192.168.50.5:5000`
+- The robot IP is shown on the OLED (line `W:`) and announced on the video overlay at boot
 
-To ensure compatibility with various types of robots running on Raspberry Pi, we utilize a config.yaml file to specify the particular robot being used. You can configure the robot by entering the following command:
+### Camera
 
-    s 22
+Detection order at startup: **USB → CSI (Picamera2) → OAK (depthai)**. CSI ribbon goes to the CAM/DISP port (22-pin on Pi 5, 15-pin on Pi 4B). Test with `rpicam-hello -t 5000`. For the OV5647 module on the DSI/CAM0 connector, add to `/boot/firmware/config.txt`:
 
-In this command, the s directive denotes a robot-type setting. The first digit, `2`, signifies that the robot is a `UGV Rover`, with `1` representing `RaspRover` and `3` indicating `UGV Beast`. The second digit, also `2`, specifies the module as `Camera PT`, where `0` denotes `Nothing` and `1` signifies `RoArm-M2`.  
+    #DSI/cam 0 Use for ov5647 cam
+    dtoverlay=ov5647,cam0
 
-### Reboot Device
-If the program fails to run and encounters errors related to v4l2.py during runtime, you need to delete v4l2.py from both the Python virtual environment and the user environment. This will allow the program to automatically use the system-wide v4l2.py.  
+Resolution/quality: `config.yaml` → `video:`. If the app crashes with v4l2 errors, delete the duplicated v4l2.py from the venv and user site-packages (see [root README](../README.md) troubleshooting).
 
-    cd ugv_rpi/  
-    sudo rm ugv-env/lib/python3.11/site-packages/v4l2.py  
-    sudo rm /home/[your_user_name]/.local/lib/python3.11/site-packages/v4l2.py  
+## API
 
-Now you can restart the main program app.py.
+### Serial link to the ESP32 (what this app actually sends)
 
-# License
-ugv_rpi for the Raspberry Pi: an open source robotics platform for the Raspberry Pi.
-Copyright (C) 2024 [Waveshare](https://www.waveshare.com/)
+`app.py` opens the UART at **115200** — `/dev/ttyAMA0` on Pi 5, `/dev/serial0` on Pi 4B (auto-detected from `/proc/cpuinfo`). One JSON object per line.
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+Live emitters (all implemented by the WAVEGO Pro firmware):
 
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+| Method (`base_ctrl.BaseController`) | JSON | Purpose |
+|---|---|---|
+| `base_speed_ctrl(L, R)` | `{"T":1,"L":..,"R":..}` | drive / heartbeat (keyboard, web pad) |
+| `gimbal_ctrl(x, y, spd, acc)` | `{"T":133,"X":..,"Y":..,"SPD":..,"ACC":..}` | body pose (also used by CV tracking) |
+| `rgb_light(id, r, g, b)` | `{"T":201,"set":[..]}` | RGB LEDs (boot breath, face-detect indicator) |
+| `base_oled(line, text)` | `{"T":202,"line":..,"text":..,"update":1}` | OLED status lines (IP, uptime) |
+| `base_json_ctrl(obj)` / `send_command(obj)` | any | raw passthrough |
 
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/gpl-3.0.txt>.
+Everything else the firmware understands (47 commands — missions, gait tuning, WiFi, ESP-NOW…) can be sent through the raw passthrough or the web JSON console.
+
+### HTTP routes (Flask)
+
+| Route | Method | Purpose |
+|---|---|---|
+| `/` , `/<file>` | GET | web UI + static assets |
+| `/config` | GET | serves `config.yaml` to the UI JS |
+| `/offer` | POST | WebRTC signaling (video) |
+| `/video_feed` | GET | MJPEG fallback stream |
+| `/send_command` | POST | send a cmdline string to `cmdline_ctrl` |
+| `/get_photo_names`, `/delete_photo`, `/get_video_names`, `/delete_video`, `/videos/<f>` | GET/POST | media galleries |
+| `/getAudioFiles`, `/uploadAudio`, `/playAudio`, `/stop_audio` | GET/POST | audio library |
+
+### WebSockets (Flask-SocketIO)
+
+- `/ctrl` — inbound `{"A": <code>, ...}`; `code` values come from `config.yaml` `code:` section (movement keys, CV modes, photo/video, LED modes, motion lock). Unknown codes are ignored.
+- `/json` — inbound JSON forwarded verbatim to the ESP32 (the web JSON console uses this).
+- `update` (emit) — periodic telemetry to the UI: CPU/RAM/temp, RSSI, battery voltage (`v` from the `T:1001` heartbeat), pan/tilt estimates, video FPS.
+
+### Feedback from the ESP32
+
+`BaseController.feedback_data()` parses serial lines: battery voltage arrives in the `T:1001` telemetry every 5 s; `{"T":-106,...}` / `{"T":-207,...}` answer position/voltage queries. See the Feedback sheet of the instruction table.
+
+## Settings
+
+All runtime settings live in **`config.yaml`**:
+
+| Section | Keys | Meaning |
+|---|---|---|
+| `base_config` | `robot_name`, `main_type` (2), `module_type` (0), `use_lidar`, `extra_sensor` | identity & hardware options |
+| `args_config` | `max_speed`, `slow_speed`, `min/mid/max_rate` | speed scaling for keyboard/web pad |
+| `video` | `default_res_w/h` (640×480), `default_quality` | camera output |
+| `cv` | `color_lower/upper`, `default_color`, `track_*_iterate`, `track_spd_rate`, `aimed_error`, `min_radius` | color tracking & CV tuning |
+| `audio_config` | `audio_output`, `default_volume`, `min_time_bewteen_play` | audio behavior |
+| `code` / `fb` | numeric UI command/feedback codes | contract with `control.js` |
+| `cmd_config` | `cmd_movition_ctrl` (1), `cmd_gimbal_ctrl` (133), `cmd_gimbal_steady` (137), `cmd_arm_ctrl_ui` (144), `cmd_pwm_ctrl` (11) | T-code overrides |
+| `sbc_config` | `feedback_interval`, `disabled_http_log` | app behavior |
+
+Hardware settings (UART enable, camera overlays incl. `dtoverlay=ov5647,cam0`) live in `/boot/firmware/config.txt` — see root README.
+
+## Codemap
+
+```
+ugv_rpi/
+├── app.py               # entry point: Flask+SocketIO app, BaseController init (Pi4/Pi5
+│                        #   serial device autodetect), routes, websocket handlers,
+│                        #   cmd_actions dispatch table, feedback/OLED update loops
+├── base_ctrl.py         # BaseController: threaded serial JSON queue, ReadLine parser,
+│                        #   emitters (T:1/133/201/202), breath_light demo
+├── cv_ctrl.py           # CameraFlinger/CV engine: USB→CSI→OAK detect, Picamera2/OpenCV,
+│                        #   face/color/motion/gesture/line modes, WebRTC frames,
+│                        #   photo/video capture, timelapse, cv_light_mode RGB indicator
+├── audio_ctrl.py        # TTS / audio playback helpers
+├── os_info.py           # system info (si): CPU/RAM/temp, IP addresses, RSSI, folders
+├── config.yaml          # all runtime settings (see Settings)
+├── requirements.txt     # pinned deps (Flask, aiortc, opencv, mediapipe, picamera2, torch…)
+├── setup.sh / autorun.sh / start_jupyter.sh
+├── AccessPopup/         # WiFi hotspot fallback manager
+├── templates/           # web UI: index.html + control.js (socket cmds, keyboard, gamepad)
+│                        #   photo.html/video.html galleries, style.css, vendored libs
+├── media/  sounds/  models/   # UI assets, audio files, CV models
+├── tutorial_en/ tutorial_cn/  # Jupyter tutorials (generic Waveshare UGV command set —
+│                               # NOT all commands apply to WAVEGO Pro; see instruction table)
+└── 99-dai.rules  asound.conf  # device/audio udev config
+```
+
+Threads at runtime: `process_commands` (serial writer), `generate_frames`/WebRTC (video), `update_data_loop` (telemetry + OLED), `base_data_loop` (serial reader / lidar / sensors).
+
+## License
+
+GPL-3.0 — see [root README](../README.md).
