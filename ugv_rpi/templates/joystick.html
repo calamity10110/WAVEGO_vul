@@ -1,0 +1,263 @@
+<html lang="en-US">
+<head>
+    <title>WAVEGO Pro — Joystick Control</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+    <script src="./socket.io.js"></script>
+    <script src="./js-yaml.min.js"></script>
+    <style>
+        :root {
+            --bg: #101418; --panel: #1a2129; --panel2: #212b36; --line: #2d3a47;
+            --txt: #d8e1ea; --dim: #8fa1b3; --acc: #4fc3f7; --ok: #66bb6a; --bad: #ef5350;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; touch-action: none; }
+        body { background: var(--bg); color: var(--txt); font-family: "Segoe UI", Roboto, Arial, sans-serif; }
+        a { color: var(--acc); text-decoration: none; }
+        header { display: flex; align-items: center; gap: 14px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+        header h1 { font-size: 18px; font-weight: 600; }
+        header .conn { margin-left: auto; font-size: 12px; color: var(--dim); }
+        .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--bad); margin-right: 4px; vertical-align: middle; }
+        .dot.on { background: var(--ok); }
+        main { display: flex; flex-direction: column; gap: 14px; padding: 14px; max-width: 900px; margin: 0 auto; }
+        section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+        section h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--dim); margin-bottom: 10px; }
+        .video-wrap { position: relative; background: #000; border-radius: 8px; overflow: hidden; }
+        .video-wrap img { display: block; width: 100%; }
+        .video-badge { position: absolute; top: 8px; left: 8px; font-size: 11px; background: rgba(0,0,0,.55); padding: 3px 8px; border-radius: 4px; color: var(--acc); }
+        .sticks { display: flex; justify-content: space-around; gap: 12px; flex-wrap: wrap; }
+        .stick-box { text-align: center; }
+        .stick {
+            width: 140px; height: 140px; border-radius: 50%;
+            background: var(--panel2); border: 2px solid var(--line); position: relative;
+        }
+        .stick .knob {
+            width: 56px; height: 56px; border-radius: 50%;
+            background: #0e3a52; border: 2px solid var(--acc);
+            position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+        }
+        .stick .cross-h, .stick .cross-v { position: absolute; background: var(--line); }
+        .stick .cross-h { left: 10%; right: 10%; top: 50%; height: 1px; }
+        .stick .cross-v { top: 10%; bottom: 10%; left: 50%; width: 1px; }
+        .stick-label { font-size: 11px; color: var(--dim); margin-top: 6px; }
+        .stick-val { font-family: Consolas, monospace; font-size: 11px; color: var(--acc); margin-top: 2px; }
+        button { background: var(--panel2); color: var(--txt); border: 1px solid var(--line); border-radius: 7px; padding: 9px 14px; font-size: 14px; cursor: pointer; }
+        button:hover { border-color: var(--acc); }
+        .action-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 12px; }
+        #btnJump { padding: 18px 34px; font-size: 18px; font-weight: 700; background: #2e1d1d; border-color: var(--bad); color: #ffb4ae; }
+        #btnJump:active { background: #5a2020; }
+        #btnStopAll { padding: 18px 26px; font-size: 16px; font-weight: 700; background: #5a2020; border-color: var(--bad); color: #ffffff; }
+        .speed-row { display: flex; gap: 8px; justify-content: center; margin-top: 10px; }
+        .speed-row button.active { background: #0e3a52; border-color: var(--acc); color: #bfe8ff; }
+        .log { margin-top: 10px; height: 90px; overflow-y: auto; font-family: Consolas, monospace; font-size: 11px; background: #0b0f13; border: 1px solid var(--line); border-radius: 7px; padding: 8px; }
+        .log .tx { color: var(--acc); } .log .info { color: var(--dim); }
+        .note { font-size: 11px; color: var(--dim); margin-top: 8px; text-align: center; }
+    </style>
+</head>
+<body>
+<header>
+    <h1>Joystick Control</h1>
+    <span style="font-size:12px;color:var(--dim)">left: move (T:1) &middot; right: body pose (T:133)</span>
+    <span class="conn"><span id="dotJson" class="dot"></span>esp32 link</span>
+    <a href="./">&laquo; main UI</a>
+    <a href="./dashboard.html">dashboard</a>
+    <a href="./gait.html">gait</a>
+</header>
+
+<main>
+    <section>
+        <h2>Camera Feed</h2>
+        <div class="video-wrap">
+            <img id="feed" src="/video_feed" alt="camera feed">
+            <span class="video-badge" id="fpsBadge">FPS --</span>
+        </div>
+    </section>
+
+    <section>
+        <h2>Sticks</h2>
+        <div class="sticks">
+            <div class="stick-box">
+                <div class="stick" id="stickMove"><div class="cross-h"></div><div class="cross-v"></div><div class="knob"></div></div>
+                <div class="stick-label">MOVE (T:1 L/R)</div>
+                <div class="stick-val" id="moveVal">L 0.00 &nbsp; R 0.00</div>
+            </div>
+            <div class="stick-box">
+                <div class="stick" id="stickPose"><div class="cross-h"></div><div class="cross-v"></div><div class="knob"></div></div>
+                <div class="stick-label">POSE (T:133 X/Y)</div>
+                <div class="stick-val" id="poseVal">X 0 &nbsp; Y 0</div>
+            </div>
+        </div>
+        <div class="speed-row">
+            <button data-spd="min">Low</button>
+            <button data-spd="mid" class="active">Mid</button>
+            <button data-spd="max">High</button>
+        </div>
+        <div class="action-row">
+            <button id="btnJump">JUMP</button>
+            <button id="btnStopAll" class="danger">STOP ALL</button>
+        </div>
+        <p class="note">JUMP (T:112 func 3) can fire while moving — the gait resumes when the jump completes. Pose stick maps X to yaw (&plusmn;30&deg;) and Y to pitch (&plusmn;17.5&deg;); release to re-center.</p>
+        <div class="log" id="log"></div>
+    </section>
+</main>
+
+<script>
+(function () {
+    var maxSpeed = 1.3, minRate = 0.3, midRate = 0.66, maxRate = 1.0;
+    var rate = 0.66, fb = {};
+    var moveCmd = { T: 1, L: 0, R: 0 };
+    var lastMoveKey = '';
+    var poseSentAt = 0;
+
+    function log(msg, cls) {
+        var box = document.getElementById('log');
+        var line = document.createElement('div');
+        line.className = cls || 'tx';
+        line.textContent = msg;
+        box.appendChild(line);
+        while (box.childNodes.length > 40) { box.removeChild(box.firstChild); }
+        box.scrollTop = box.scrollHeight;
+    }
+
+    fetch('/config').then(function (r) { return r.text(); }).then(function (t) {
+        var y = jsyaml.load(t);
+        maxSpeed = y.args_config.max_speed;
+        minRate = y.args_config.min_rate;
+        midRate = y.args_config.mid_rate;
+        maxRate = y.args_config.max_rate;
+        rate = midRate;
+        fb = y.fb;
+    }).catch(function (e) { log('config load failed: ' + e, 'info'); });
+
+    var socketJson = io('http://' + location.host + '/json');
+    var socket = io('http://' + location.host + '/ctrl');
+    socketJson.on('connect', function () { document.getElementById('dotJson').classList.add('on'); });
+    socketJson.on('disconnect', function () { document.getElementById('dotJson').classList.remove('on'); });
+    socket.on('connect', function () { socket.emit('request_data'); });
+    socket.on('update', function (data) {
+        if (fb.video_fps !== undefined && data[fb.video_fps] !== undefined) {
+            document.getElementById('fpsBadge').textContent = 'FPS ' + data[fb.video_fps].toFixed(1);
+        }
+    });
+
+    function sendEsp(json) {
+        socketJson.emit('json', json);
+        log('TX ' + JSON.stringify(json));
+    }
+
+    function makeStick(el, onChange, onRelease) {
+        var knob = el.querySelector('.knob');
+        var active = false;
+        function norm(e) {
+            var r = el.getBoundingClientRect();
+            var x = ((e.clientX - r.left) / r.width) * 2 - 1;
+            var y = ((e.clientY - r.top) / r.height) * 2 - 1;
+            var len = Math.sqrt(x * x + y * y);
+            if (len > 1) { x /= len; y /= len; }
+            return { x: x, y: y };
+        }
+        function render(p) {
+            knob.style.left = (50 + p.x * 36) + '%';
+            knob.style.top = (50 + p.y * 36) + '%';
+        }
+        function move(e) {
+            if (!active) { return; }
+            var p = norm(e);
+            render(p);
+            onChange(p);
+        }
+        function end() {
+            if (!active) { return; }
+            active = false;
+            render({ x: 0, y: 0 });
+            onRelease();
+        }
+        el.addEventListener('pointerdown', function (e) {
+            active = true;
+            el.setPointerCapture(e.pointerId);
+            move(e);
+        });
+        el.addEventListener('pointermove', move);
+        el.addEventListener('pointerup', end);
+        el.addEventListener('pointercancel', end);
+        return { center: function () { render({ x: 0, y: 0 }); } };
+    }
+
+    function updateMove(x, y, send) {
+        var fwd = -y;
+        var turn = x;
+        var l = Math.max(-1, Math.min(1, fwd + turn));
+        var r = Math.max(-1, Math.min(1, fwd - turn));
+        moveCmd.L = +(l * maxSpeed).toFixed(3);
+        moveCmd.R = +(r * maxSpeed).toFixed(3);
+        document.getElementById('moveVal').textContent = 'L ' + moveCmd.L.toFixed(2) + ' \u00a0 R ' + moveCmd.R.toFixed(2);
+        var key = moveCmd.L + ',' + moveCmd.R;
+        if (send && key !== lastMoveKey) {
+            lastMoveKey = key;
+            sendEsp({ T: 1, L: +(moveCmd.L * rate).toFixed(3), R: +(moveCmd.R * rate).toFixed(3) });
+        }
+    }
+
+    var moveThrottle = null;
+    makeStick(document.getElementById('stickMove'),
+        function (p) {
+            updateMove(p.x, p.y, false);
+            if (moveThrottle) { clearTimeout(moveThrottle); }
+            moveThrottle = setTimeout(function () { updateMoveFromCurrent(); }, 80);
+        },
+        function () {
+            updateMove(0, 0, true);
+            lastMoveKey = '0,0';
+        }
+    );
+    function updateMoveFromCurrent() {
+        sendEsp({ T: 1, L: +(moveCmd.L * rate).toFixed(3), R: +(moveCmd.R * rate).toFixed(3) });
+    }
+
+    makeStick(document.getElementById('stickPose'),
+        function (p) {
+            var now = Date.now();
+            document.getElementById('poseVal').textContent = 'X ' + Math.round(p.x * 180) + ' \u00a0 Y ' + Math.round(-p.y * 30);
+            if (now - poseSentAt > 150) {
+                poseSentAt = now;
+                sendEsp({ T: 133, X: Math.round(p.x * 180), Y: Math.round(-p.y * 30) });
+            }
+        },
+        function () {
+            document.getElementById('poseVal').textContent = 'X 0 \u00a0 Y 0';
+            sendEsp({ T: 133, X: 0, Y: 0 });
+        }
+    );
+
+    setInterval(function () {
+        if (socketJson.connected && (moveCmd.L !== 0 || moveCmd.R !== 0)) {
+            sendEsp({ T: 1, L: +(moveCmd.L * rate).toFixed(3), R: +(moveCmd.R * rate).toFixed(3) });
+        }
+    }, 2000);
+
+    Array.prototype.forEach.call(document.querySelectorAll('[data-spd]'), function (btn) {
+        btn.addEventListener('click', function () {
+            Array.prototype.forEach.call(document.querySelectorAll('[data-spd]'), function (b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            var k = btn.getAttribute('data-spd');
+            rate = (k === 'min') ? minRate : (k === 'max') ? maxRate : midRate;
+        });
+    });
+
+    document.getElementById('btnJump').addEventListener('click', function () {
+        sendEsp({ T: 112, func: 3 });
+    });
+
+    function stopAll() {
+        moveCmd.L = 0; moveCmd.R = 0; lastMoveKey = '0,0';
+        document.getElementById('moveVal').textContent = 'L 0.00 \u00a0 R 0.00';
+        sendEsp({ T: 1, L: 0, R: 0 });
+        sendEsp({ T: 133, X: 0, Y: 0 });
+    }
+    document.getElementById('btnStopAll').addEventListener('click', stopAll);
+    window.addEventListener('blur', stopAll);
+
+    log('joystick page ready', 'info');
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,241 @@
+<html lang="en-US">
+<head>
+    <title>WAVEGO Pro — Gait &amp; Lower Computer Settings</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <script src="./socket.io.js"></script>
+    <style>
+        :root {
+            --bg: #101418; --panel: #1a2129; --panel2: #212b36; --line: #2d3a47;
+            --txt: #d8e1ea; --dim: #8fa1b3; --acc: #4fc3f7; --ok: #66bb6a; --bad: #ef5350;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: var(--bg); color: var(--txt); font-family: "Segoe UI", Roboto, Arial, sans-serif; }
+        a { color: var(--acc); text-decoration: none; }
+        header { display: flex; align-items: center; gap: 14px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+        header h1 { font-size: 18px; font-weight: 600; }
+        header .warn-note { font-size: 12px; color: var(--warn, #ffa726); margin-left: auto; }
+        main { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; padding: 14px; }
+        section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+        section h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--dim); margin-bottom: 12px; }
+        button { background: var(--panel2); color: var(--txt); border: 1px solid var(--line); border-radius: 7px; padding: 9px 14px; font-size: 14px; cursor: pointer; }
+        button:hover { border-color: var(--acc); }
+        button.primary { background: #0e3a52; border-color: var(--acc); color: #bfe8ff; font-weight: 600; }
+        button.danger { border-color: var(--bad); color: #ffb4ae; }
+        .param { margin-bottom: 12px; }
+        .param label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
+        .param label .val { color: var(--acc); font-family: Consolas, monospace; }
+        .param input[type=range] { width: 100%; }
+        .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        .row + .row { margin-top: 10px; }
+        .log {
+            margin-top: 12px; height: 130px; overflow-y: auto; font-family: Consolas, monospace;
+            font-size: 11px; background: #0b0f13; border: 1px solid var(--line); border-radius: 7px; padding: 8px;
+        }
+        .log .tx { color: var(--acc); } .log .info { color: var(--dim); }
+        input[type=text], input[type=number] {
+            background: #0b0f13; border: 1px solid var(--line); border-radius: 7px;
+            color: var(--txt); padding: 8px 10px; font-family: Consolas, monospace; font-size: 13px;
+        }
+        .note { font-size: 11px; color: var(--dim); margin-top: 8px; line-height: 1.5; }
+    </style>
+</head>
+<body>
+<header>
+    <h1>Gait &amp; Lower Computer Settings</h1>
+    <span style="font-size:12px;color:var(--dim)">direct ESP32 JSON (T:114/115/116 + peripherals)</span>
+    <span class="warn-note">changes apply live &mdash; robot may move</span>
+    <a href="./">&laquo; main UI</a>
+    <a href="./dashboard.html">dashboard</a>
+    <a href="./joystick.html">joystick</a>
+</header>
+
+<main>
+    <section>
+        <h2>Gait Parameters (T:116)</h2>
+        <div id="gaitParams"></div>
+        <div class="row">
+            <button id="applyGait" class="primary">Apply Gait (T:116)</button>
+            <button id="resetGait">Load Defaults</button>
+        </div>
+        <p class="note">Values mirror Config.h defaults. height + lift must stay &le; maxHeight. Takes effect on the next gait cycle.</p>
+    </section>
+
+    <section>
+        <h2>Interpolation &amp; Height</h2>
+        <div class="param">
+            <label>step delay (ms) <span class="val" id="v_delay">5</span></label>
+            <input type="range" id="p_delay" min="1" max="20" step="1" value="5">
+        </div>
+        <div class="param">
+            <label>step iterate <span class="val" id="v_iter">0.02</span></label>
+            <input type="range" id="p_iter" min="0.005" max="0.1" step="0.005" value="0.02">
+        </div>
+        <div class="row"><button id="applyInterp" class="primary">Apply Interpolation (T:115)</button></div>
+        <div class="param" style="margin-top:16px">
+            <label>stand height (mm) <span class="val" id="v_height">95</span></label>
+            <input type="range" id="p_height" min="75" max="110" step="1" value="95">
+        </div>
+        <div class="row"><button id="applyHeight" class="primary">Stand at Height (T:114)</button></div>
+    </section>
+
+    <section>
+        <h2>Body &amp; Calibration</h2>
+        <div class="row">
+            <button id="btnStand">Stand (T:110)</button>
+            <button id="btnMiddle">Joints to Middle (T:101)</button>
+        </div>
+        <div class="row">
+            <button id="btnZeroGet">Print Zero Array (T:104)</button>
+        </div>
+        <div class="row">
+            <button id="btnZeroSet" class="danger">Set Current Pos as Zero (T:107)</button>
+        </div>
+        <p class="note">T:104 replies on the ESP32 serial console, not this page. T:107 recalibrates the zero pose and persists it to the boot mission — only run on a flat, calibrated stance.</p>
+    </section>
+
+    <section>
+        <h2>Peripherals</h2>
+        <div class="row">
+            <button id="btnBeep">Buzzer Beep (T:206)</button>
+            <input type="number" id="beepFreq" value="2000" min="100" max="8000" style="width:80px">
+            <input type="number" id="beepDur" value="50" min="10" max="1000" style="width:80px">
+        </div>
+        <div class="row">
+            <input type="text" id="oledText" placeholder="OLED line text" maxlength="21" style="flex:1">
+            <input type="number" id="oledLine" value="4" min="1" max="4" style="width:60px">
+            <button id="btnOled">OLED (T:202)</button>
+        </div>
+        <div class="row">
+            <button id="btnBat">Poll Battery (T:207)</button>
+            <button id="btnWifiInfo">WiFi Info (T:401)</button>
+        </div>
+        <p class="note">T:207 / T:401 responses go to the serial console / dashboard telemetry (battery voltage appears in the update stream).</p>
+    </section>
+
+    <section style="grid-column: 1 / -1">
+        <h2>Console</h2>
+        <div class="log" id="log"></div>
+    </section>
+</main>
+
+<script>
+(function () {
+    var GAIT_DEFAULTS = {
+        maxHeight: { v: 110, min: 75, max: 120, step: 1 },
+        minHeight: { v: 75, min: 60, max: 95, step: 1 },
+        height:    { v: 95, min: 75, max: 110, step: 1 },
+        lift:      { v: 9, min: 0, max: 20, step: 1 },
+        range:     { v: 40, min: 10, max: 60, step: 1 },
+        acc:       { v: 5, min: 0, max: 15, step: 1 },
+        extendedX: { v: 16, min: 0, max: 40, step: 1 },
+        extendedZ: { v: 25, min: 0, max: 50, step: 1 },
+        sideMax:   { v: 30, min: 10, max: 50, step: 1 },
+        massAdjust:{ v: 21, min: 0, max: 40, step: 1 }
+    };
+
+    function log(msg, cls) {
+        var box = document.getElementById('log');
+        var line = document.createElement('div');
+        line.className = cls || 'tx';
+        line.textContent = msg;
+        box.appendChild(line);
+        while (box.childNodes.length > 60) { box.removeChild(box.firstChild); }
+        box.scrollTop = box.scrollHeight;
+    }
+
+    var socketJson = io('http://' + location.host + '/json');
+    socketJson.on('connect', function () { log('esp32 link connected', 'info'); });
+    function sendEsp(json) {
+        socketJson.emit('json', json);
+        log('TX ' + JSON.stringify(json));
+    }
+
+    var container = document.getElementById('gaitParams');
+    Object.keys(GAIT_DEFAULTS).forEach(function (key) {
+        var def = GAIT_DEFAULTS[key];
+        var wrap = document.createElement('div');
+        wrap.className = 'param';
+        var label = document.createElement('label');
+        var name = document.createElement('span');
+        name.textContent = key;
+        var val = document.createElement('span');
+        val.className = 'val';
+        val.textContent = def.v;
+        val.id = 'v_' + key;
+        label.appendChild(name);
+        label.appendChild(val);
+        var range = document.createElement('input');
+        range.type = 'range';
+        range.id = 'p_' + key;
+        range.min = def.min; range.max = def.max; range.step = def.step; range.value = def.v;
+        range.addEventListener('input', function () { val.textContent = range.value; });
+        wrap.appendChild(label);
+        wrap.appendChild(range);
+        container.appendChild(wrap);
+    });
+
+    function gaitValues() {
+        var out = { T: 116 };
+        Object.keys(GAIT_DEFAULTS).forEach(function (key) {
+            out[key] = parseFloat(document.getElementById('p_' + key).value);
+        });
+        if (out.height + out.lift > out.maxHeight) {
+            log('rejected: height + lift > maxHeight', 'info');
+            return null;
+        }
+        return out;
+    }
+    document.getElementById('applyGait').addEventListener('click', function () {
+        var v = gaitValues();
+        if (v) { sendEsp(v); }
+    });
+    document.getElementById('resetGait').addEventListener('click', function () {
+        Object.keys(GAIT_DEFAULTS).forEach(function (key) {
+            var def = GAIT_DEFAULTS[key];
+            document.getElementById('p_' + key).value = def.v;
+            document.getElementById('v_' + key).textContent = def.v;
+        });
+        log('defaults loaded (not sent)', 'info');
+    });
+
+    function bindRange(id, valId, fmt) {
+        var el = document.getElementById(id);
+        el.addEventListener('input', function () {
+            document.getElementById(valId).textContent = fmt ? fmt(el.value) : el.value;
+        });
+    }
+    bindRange('p_delay', 'v_delay');
+    bindRange('p_iter', 'v_iter', function (v) { return parseFloat(v).toFixed(3); });
+    bindRange('p_height', 'v_height');
+
+    document.getElementById('applyInterp').addEventListener('click', function () {
+        sendEsp({ T: 115, delay: parseInt(document.getElementById('p_delay').value, 10), iterate: parseFloat(document.getElementById('p_iter').value) });
+    });
+    document.getElementById('applyHeight').addEventListener('click', function () {
+        sendEsp({ T: 114, h: parseFloat(document.getElementById('p_height').value) });
+    });
+
+    document.getElementById('btnStand').addEventListener('click', function () { sendEsp({ T: 110 }); });
+    document.getElementById('btnMiddle').addEventListener('click', function () { sendEsp({ T: 101 }); });
+    document.getElementById('btnZeroGet').addEventListener('click', function () { sendEsp({ T: 104 }); });
+    document.getElementById('btnZeroSet').addEventListener('click', function () {
+        if (window.confirm('Set the CURRENT joint positions as the new zero calibration? Robot must be standing flat and calibrated. This persists to the boot mission.')) {
+            sendEsp({ T: 107 });
+        }
+    });
+
+    document.getElementById('btnBeep').addEventListener('click', function () {
+        sendEsp({ T: 206, freq: parseInt(document.getElementById('beepFreq').value, 10), duration: parseInt(document.getElementById('beepDur').value, 10) });
+    });
+    document.getElementById('btnOled').addEventListener('click', function () {
+        sendEsp({ T: 202, line: parseInt(document.getElementById('oledLine').value, 10), text: document.getElementById('oledText').value || ' ', update: 1 });
+    });
+    document.getElementById('btnBat').addEventListener('click', function () { sendEsp({ T: 207 }); });
+    document.getElementById('btnWifiInfo').addEventListener('click', function () { sendEsp({ T: 401 }); });
+
+    log('gait settings page ready', 'info');
+})();
+</script>
+</body>
+</html>
