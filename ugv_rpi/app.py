@@ -435,8 +435,19 @@ def api_cmd():
     data = request.get_json(silent=True)
     if not isinstance(data, dict) or 'T' not in data:
         return jsonify(success=False, error='JSON object body with integer field "T" required'), 400
+    sync_ms = min(request.args.get('sync_ms', default=0, type=int), 3000)
     base.base_json_ctrl(data)
-    return jsonify(success=True, sent=data)
+    response = None
+    if sync_ms > 0 and isinstance(data['T'], int):
+        expected_t = -data['T']
+        deadline = time.time() + sync_ms / 1000.0
+        while time.time() < deadline:
+            bd = base.base_data if isinstance(base.base_data, dict) else {}
+            if bd.get('T') == expected_t:
+                response = bd
+                break
+            time.sleep(0.02)
+    return jsonify(success=True, sent=data, response=response)
 
 @app.route('/api/status')
 def api_status():

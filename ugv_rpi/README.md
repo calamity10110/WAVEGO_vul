@@ -79,7 +79,7 @@ For programs on or off the Raspberry Pi that need to drive the robot or read sen
 
 | Route | Method | Purpose |
 |---|---|---|
-| `/api/cmd` | POST | raw JSON passthrough to the ESP32 — body must be a command object with an integer `T` field (e.g. `{"T":111,"FB":1,"LR":0}`); returns `{"success":true,"sent":{...}}` |
+| `/api/cmd` | POST | raw JSON passthrough to the ESP32 — body must be a command object with an integer `T` field (e.g. `{"T":111,"FB":1,"LR":0}`); returns `{"success":true,"sent":{...}}`. Optional `?sync_ms=500` short-polls (max 3000 ms) for the negative-`T` reply of query commands (T:106 positions, T:207 battery) and returns it as `response` |
 | `/api/status` | GET | sensor/status snapshot: ESP32 battery voltage + last raw feedback, RPi CPU/temp/RAM/RSSI, video FPS + stream URLs, CV mode |
 | `/video_feed` | GET | MJPEG camera stream (consume directly from any client) |
 | `/offer` | POST | WebRTC signaling for the camera |
@@ -87,6 +87,8 @@ For programs on or off the Raspberry Pi that need to drive the robot or read sen
 Example from another machine:
 
     curl -X POST http://<robot-ip>:5000/api/cmd -H "Content-Type: application/json" -d '{"T":112,"func":3}'
+    curl -X POST "http://<robot-ip>:5000/api/cmd?sync_ms=500" -H "Content-Type: application/json" -d '{"T":207}'
+    # -> {"success":true,"sent":{"T":207},"response":{"T":-207,"voltage":7.82}}
     curl http://<robot-ip>:5000/api/status
 
 Note: the API is unauthenticated, like the rest of the app — intended for trusted LAN use.
