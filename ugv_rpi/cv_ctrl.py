@@ -481,9 +481,6 @@ class OpencvFuncs():
 
         if len(faces):
             if self.cv_light_mode == 1:
-                # if self.base_ctrl.head_light_status == 0:
-                #     self.base_ctrl.head_light_status = 255
-                #     self.base_ctrl.lights_ctrl(self.base_ctrl.base_light_status, self.base_ctrl.head_light_status)
                 self.base_ctrl.send_command({"T":201,"set":[0,255,0,0]})
                 self.base_ctrl.send_command({"T":201,"set":[1,255,0,0]})
             for (x,y,w,h) in faces:
@@ -505,10 +502,6 @@ class OpencvFuncs():
                     self.video_record(True)
                 self.last_frame_capture_time = datetime.datetime.now()
         else:
-            # if self.cv_light_mode == 1:
-            #     if self.base_ctrl.head_light_status != 0:
-            #         self.base_ctrl.head_light_status = 0
-            #         self.base_ctrl.lights_ctrl(self.base_ctrl.base_light_status, self.base_ctrl.head_light_status)
             self.base_ctrl.send_command({"T":201,"set":[0,0,255,255]})
             self.base_ctrl.send_command({"T":201,"set":[1,0,255,255]})
 
@@ -606,13 +599,9 @@ class OpencvFuncs():
                 if not self.cv_movtion_lock:
                     distance = self.gimbal_track(center_x, center_y, center[0], center[1], self.track_color_iterate)
                     if distance < self.aimed_error:
-                        # head_light_pwm = 10
-                        # self.base_ctrl.lights_ctrl(self.base_ctrl.base_light_status, head_light_pwm)
                         self.base_ctrl.send_command({"T":201,"set":[0,255,0,0]})
                         self.base_ctrl.send_command({"T":201,"set":[1,255,0,0]})
                     else:
-                        # head_light_pwm = 0
-                        # self.base_ctrl.lights_ctrl(self.base_ctrl.base_light_status, head_light_pwm)
                         self.base_ctrl.send_command({"T":201,"set":[0,0,0,255]})
                         self.base_ctrl.send_command({"T":201,"set":[1,0,0,255]})
                     cv2.putText(overlay_buffer, 'DIF: {}'.format(distance), (center_x+50, center_y+20), 
@@ -628,8 +617,6 @@ class OpencvFuncs():
 
                 self.points.appendleft(center)
             else:
-                # head_light_pwm = 0
-                # self.base_ctrl.lights_ctrl(self.base_ctrl.base_light_status, head_light_pwm)
                 self.base_ctrl.send_command({"T":201,"set":[0,0,0,255]})
                 self.base_ctrl.send_command({"T":201,"set":[1,0,0,255]})
                 self.points.appendleft(None)
@@ -724,11 +711,8 @@ class OpencvFuncs():
                         self.max_distance = tips_distance
                     # print(index_finger_gs)
 
-                    get_pwm = int(self.map_value(tips_distance, 0.01, self.max_distance, 0, 128))
-                    self.base_ctrl.lights_ctrl(get_pwm, get_pwm)
-
                     # try:
-                    #     print(f"dis:{tips_distance} max:{self.max_distance} pwm:{get_pwm}")
+                    #     print(f"dis:{tips_distance} max:{self.max_distance}")
                     # except Exception as e:
                     #     print(e)
 
@@ -737,17 +721,13 @@ class OpencvFuncs():
                     cv2.putText(overlay_bgr, ' GS: Take Pic', (center_x+50, center_y+100), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 128, 128), 1)
                     if time.time() - self.gs_pic_last_time > self.gs_pic_interval:
-                        self.base_ctrl.lights_ctrl(255, 255)
-                        time.sleep(0.01)
                         self.picture_capture()
-                        self.base_ctrl.lights_ctrl(0, 0)
                         self.gs_pic_last_time = time.time()
 
                 # Not Found
                 else:
                     cv2.putText(overlay_bgr, ' GS: Not Defined', (center_x+50, center_y+100), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 128, 128), 1)
-                    self.base_ctrl.lights_ctrl(0, 0)
 
         cv2.putText(overlay_bgr, 'ITERATE: {}'.format(self.track_faces_iterate), (center_x+50, center_y+140), 
             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
@@ -984,22 +964,12 @@ class OpencvFuncs():
         cv_thread.start()
 
     def head_light_ctrl(self, input_mode):
-        self.cv_light_mode = input_mode
-        if input_mode == 0:
-            self.base_ctrl.lights_ctrl(self.base_ctrl.base_light_status, 0)
-            self.cv_light_mode = input_mode
-        elif input_mode == 2:
-            self.base_ctrl.lights_ctrl(self.base_ctrl.base_light_status, 255)
-            self.cv_light_mode = input_mode
-        elif input_mode == 3:
+        if input_mode == 3:
             if self.cv_light_mode == 1:
                 return
-            elif self.base_ctrl.head_light_status == 0:
-                self.cv_light_mode = 2
-                self.base_ctrl.lights_ctrl(self.base_ctrl.base_light_status, 255)
-            elif self.base_ctrl.head_light_status != 0:
-                self.cv_light_mode = 0
-                self.base_ctrl.lights_ctrl(self.base_ctrl.base_light_status, 0)
+            self.cv_light_mode = 2 if self.cv_light_mode == 0 else 0
+        else:
+            self.cv_light_mode = input_mode
 
     def set_movtion_lock(self, input_cmd):
         if not input_cmd:
@@ -1056,10 +1026,7 @@ class OpencvFuncs():
             time.sleep(input_time)
             self.base_ctrl.base_json_ctrl({"T":1,"L":0,"R":0})
             time.sleep(input_interval/2)
-            self.base_ctrl.lights_ctrl(255, 255)
-            time.sleep(0.01)
             self.picture_capture()
-            self.base_ctrl.lights_ctrl(0, 0)
             time.sleep(input_interval/2)
             if not self.mission_flag:
                 self.mission_flag = False

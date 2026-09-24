@@ -137,9 +137,6 @@ class BaseController:
 		self.command_thread = threading.Thread(target=self.process_commands, daemon=True)
 		self.command_thread.start()
 
-		self.base_light_status = 0
-		self.head_light_status = 0
-
 		self.data_buffer = None
 		self.base_data = None
 
@@ -188,11 +185,6 @@ class BaseController:
 		self.send_command(input_json)
 
 
-	def gimbal_emergency_stop(self):
-		data = {"T":0}
-		self.send_command(data)
-
-
 	def base_speed_ctrl(self, input_left, input_right):
 		data = {"T":1,"L":input_left,"R":input_right}
 		self.send_command(data)
@@ -203,53 +195,11 @@ class BaseController:
 		self.send_command(data)
 
 
-	def gimbal_base_ctrl(self, input_x, input_y, input_speed):
-		data = {"T":141,"X":input_x,"Y":input_y,"SPD":input_speed}
-		self.send_command(data)
-
-
 	def base_oled(self, input_line, input_text):
 		# data = {"T":3,"lineNum":input_line,"Text":input_text}
 		data = {"T":202,"line":input_line + 1,"text":input_text,"update":1}
 		self.send_command(data)
 
-
-	def base_default_oled(self):
-		data = {"T":-3}
-		self.send_command(data)
-
-
-	def bus_servo_id_set(self, old_id, new_id):
-		# data = {"T":54,"old":old_id,"new":new_id}
-		data = {"T":f['cmd_config']['cmd_set_servo_id'],"raw":old_id,"new":new_id}
-		self.send_command(data)
-
-
-	def bus_servo_torque_lock(self, input_id, input_status):
-		# data = {"T":55,"id":input_id,"status":input_status}
-		data = {"T":f['cmd_config']['cmd_servo_torque'],"id":input_id,"cmd":input_status}
-		self.send_command(data)
-
-
-	def bus_servo_mid_set(self, input_id):
-		# data = {"T":58,"id":input_id}
-		data = {"T":f['cmd_config']['cmd_set_servo_mid'],"id":input_id}
-		self.send_command(data)
-
-
-	def lights_ctrl(self, pwmA, pwmB):
-		data = {"T":132,"IO4":pwmA,"IO5":pwmB}
-		self.send_command(data)
-		self.base_light_status = pwmA
-		self.head_light_status = pwmB
-
-
-	def base_lights_ctrl(self):
-		if self.base_light_status != 0:
-			self.base_light_status = 0
-		else:
-			self.base_light_status = 255
-		self.lights_ctrl(self.base_light_status, self.head_light_status)
 
 	def rgb_light(self, id, r, g, b):
 		data = {"T":201,"set":[id, r, g, b]}
@@ -262,26 +212,23 @@ class BaseController:
 		breath_start_time = time.time()
 		while time.time() - breath_start_time < input_time:
 			for i in range(0, 128, 10):
-				# self.lights_ctrl(i, 128-i)
 				self.rgb_light(0, round(255*(i/128)), 0, round(64*(i/128)))
 				self.rgb_light(1, round(64*(i/128)), 0, round(255*(i/128)))
 				time.sleep(0.1)
 			for i in range(0, 128, 10):
-				# self.lights_ctrl(128-i, i)
 				self.rgb_light(0, round(64*((128-i)/128)), 0, round(255*((128-i)/128)))
 				self.rgb_light(1, round(255*((128-i)/128)), 0, round(64*((128-i)/128)))
 				time.sleep(0.1)
-		# self.lights_ctrl(0, 0)
 		self.rgb_light(0, 64, 0, 255)
 		self.rgb_light(1, 255, 0, 64)
 
 
 if __name__ == '__main__':
 	# RPi5
-	# base = BaseController('/dev/ttyAMA0', 921600)
+	# base = BaseController('/dev/ttyAMA0', 115200)
 
 	# RPi4B
-	base = BaseController('/dev/serial0', 921600)
+	base = BaseController('/dev/serial0', 115200)
 
 	# base.send_command({"T":201,"set":[0,9,0,0]})
 	# time.sleep(1)

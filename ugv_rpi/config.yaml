@@ -22,18 +22,11 @@ base_config:
   use_lidar: false
 cmd_config:
   cmd_arm_ctrl_ui: 144
-  cmd_gimbal_base_ctrl: 141
   cmd_gimbal_ctrl: 133
   cmd_gimbal_steady: 137
   cmd_movition_ctrl: 1
   cmd_pwm_ctrl: 11
-  cmd_servo_torque: 210
-  cmd_set_servo_id: 501
-  cmd_set_servo_mid: 502
 code:
-  base_ct: 10410
-  base_of: 10407
-  base_on: 10408
   cv_auto: 10307
   cv_clor: 10305
   cv_face: 10303
@@ -56,10 +49,6 @@ code:
   re_capt: 10402
   re_none: 10401
   re_reco: 10403
-  release: 10902
-  s_panid: 10901
-  s_tilid: 10904
-  set_mid: 10903
   vid_end: 10203
   vid_sta: 10202
   zoom_x1: 10104
@@ -83,7 +72,6 @@ cv:
   track_faces_iterate: 0.045
   track_spd_rate: 60
 fb:
-  base_light: 115
   base_voltage: 112
   cpu_load: 106
   cpu_temp: 107

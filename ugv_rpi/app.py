@@ -98,16 +98,7 @@ cmd_actions = {
     f['code']['led_off']: lambda: cvf.head_light_ctrl(0),
     f['code']['led_aut']: lambda: cvf.head_light_ctrl(1),
     f['code']['led_ton']: lambda: cvf.head_light_ctrl(2),
-
-    f['code']['release']: lambda: base.bus_servo_torque_lock(255, 0),
-    f['code']['s_panid']: lambda: base.bus_servo_id_set(255, 2),
-    f['code']['s_tilid']: lambda: base.bus_servo_id_set(255, 1),
-    f['code']['set_mid']: lambda: base.bus_servo_mid_set(255),
-
-    f['code']['base_of']: lambda: base.lights_ctrl(0, base.head_light_status),
-    f['code']['base_on']: lambda: base.lights_ctrl(255, base.head_light_status),
-    f['code']['head_ct']: lambda: cvf.head_light_ctrl(3),
-    f['code']['base_ct']: base.base_lights_ctrl
+    f['code']['head_ct']: lambda: cvf.head_light_ctrl(3)
 }
 
 cmd_feedback_actions = [f['code']['cv_none'], f['code']['cv_moti'],
@@ -118,9 +109,7 @@ cmd_feedback_actions = [f['code']['cv_none'], f['code']['cv_moti'],
                         f['code']['re_capt'], f['code']['re_reco'],
                         f['code']['mc_lock'], f['code']['mc_unlo'],
                         f['code']['led_off'], f['code']['led_aut'],
-                        f['code']['led_ton'], f['code']['base_of'],
-                        f['code']['base_on'], f['code']['head_ct'],
-                        f['code']['base_ct']
+                        f['code']['led_ton'], f['code']['head_ct']
                         ]
 
 # cv info process
@@ -249,7 +238,6 @@ def offer():
 
 # set product version
 def set_version(input_main, input_module):
-    base.base_json_ctrl({"T":900,"main":input_main,"module":input_module})
     if input_main == 1:
         cvf.info_update("RaspRover", (0,255,255), 0.36)
     elif input_main == 2:
@@ -470,10 +458,6 @@ def audio_stop():
     # audio_ctrl.stop()
     return jsonify({'success': 'Audio stop'})
 
-@app.route('/settings/<path:filename>')
-def serve_static_settings(filename):
-    return send_from_directory('templates', filename)
-
 
 
 # Web socket
@@ -504,8 +488,7 @@ def update_data_websocket_single():
             f['fb']['tilt_angle']:  cvf.tilt_angle,
             f['fb']['base_voltage']:base.base_data['v'],
             f['fb']['video_fps']:   cvf.video_fps,
-            f['fb']['cv_movtion_mode']: cvf.cv_movtion_lock,
-            f['fb']['base_light']:  base.base_light_status
+            f['fb']['cv_movtion_mode']: cvf.cv_movtion_lock
         }
         socketio.emit('update', socket_data, namespace='/ctrl')
     except Exception as e:
@@ -570,29 +553,8 @@ def handle_socket_cmd(message):
 
 
 
-# commandline on boot
-def cmd_on_boot():
-    cmd_list = [
-        'base -c {"T":142,"cmd":50}',   # set feedback interval
-        'base -c {"T":131,"cmd":1}',    # serial feedback flow on
-        'base -c {"T":143,"cmd":0}',    # serial echo off
-        'base -c {{"T":4,"cmd":{}}}'.format(f['base_config']['module_type']),      # select the module - 0:None 1:RoArm-M2-S 2:Gimbal
-        'base -c {"T":300,"mode":0,"mac":"EF:EF:EF:EF:EF:EF"}',  # the base won't be ctrl by esp-now broadcast cmd, but it can still recv broadcast megs.
-        'send -a -b'    # add broadcast mac addr to peer
-    ]
-    print('base -c {{"T":4,"cmd":{}}}'.format(f['base_config']['module_type']))
-    for i in range(0, len(cmd_list)):
-        cmdline_ctrl(cmd_list[i])
-        cvf.info_update(cmd_list[i], (0,255,255), 0.36)
-    set_version(f['base_config']['main_type'], f['base_config']['module_type'])
-
-
-
 # Run the Flask app
 if __name__ == "__main__":
-    # lights off
-    base.lights_ctrl(255, 255)
-    
     # play a audio file in /sounds/robot_started/
     # audio_ctrl.play_random_audio("robot_started", False)
 
@@ -614,10 +576,6 @@ if __name__ == "__main__":
     # base data update
     base_update_thread = threading.Thread(target=base_data_loop, daemon=True)
     base_update_thread.start()
-
-    # lights off
-    base.lights_ctrl(0, 0)
-    cmd_on_boot()
 
     # run the main web app
     socketio.run(app, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)
