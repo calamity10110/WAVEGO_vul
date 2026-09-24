@@ -7,14 +7,13 @@ var pic_cap, vid_sta, vid_end;
 var mc_lock, mc_unlo;
 var cv_none, cv_moti, cv_face, cv_objs, cv_clor, mp_hand, cv_auto;
 var mp_face, mp_pose;
-var re_none, re_capt, re_reco, led_off, led_aut, led_ton, base_of, base_on;
-var head_ct, base_ct;
-var s_panid, release, set_mid, s_tilid;
+var re_none, re_capt, re_reco, led_off, led_aut, led_ton;
+var head_ct;
 var armZ, armR, armE;
 
 var detect_type, led_mode, detect_react, picture_size, video_size, cpu_load;
 var cpu_temp, ram_usage, pan_angle, tilt_angle, wifi_rssi, base_voltage, video_fps;
-var cv_movtion_mode, base_light;
+var cv_movtion_mode;
 
 fetch('/config')
   .then(response => response.text())
@@ -75,15 +74,7 @@ fetch('/config')
       led_off = yamlObject.code.led_off;
       led_aut = yamlObject.code.led_aut;
       led_ton = yamlObject.code.led_ton;
-      base_of = yamlObject.code.base_of;
-      base_on = yamlObject.code.base_on;
       head_ct = yamlObject.code.head_ct;
-      base_ct = yamlObject.code.base_ct;
-
-      s_panid = yamlObject.code.s_panid;
-      release = yamlObject.code.release;
-      set_mid = yamlObject.code.set_mid;
-      s_tilid = yamlObject.code.s_tilid;
 
       detect_type = yamlObject.fb.detect_type;
       led_mode    = yamlObject.fb.led_mode;
@@ -99,7 +90,6 @@ fetch('/config')
       base_voltage= yamlObject.fb.base_voltage;
       video_fps   = yamlObject.fb.video_fps;
       cv_movtion_mode = yamlObject.fb.cv_movtion_mode;
-      base_light  = yamlObject.fb.base_light;
 
       if (robot_name) {
         document.title = robot_name + " WEB CTRL";
@@ -523,31 +513,6 @@ function joyStickCtrl(inputX, inputY) {
 }
 
 
-//seetting page
-function confirmSetPanID() {
-    if (confirm("Make sure that you have already DISCONNECT the wire of the Tilt Servo")) {
-        cmdSend(s_panid, 0, 0);
-    }
-}
-function confirmRelease() {
-    if (confirm("You will unlock the torque lock, then you can manually adjust the angle of the two servos.")) {
-        cmdSend(release, 0, 0);
-    }
-}
-function confirmMiddleSet() {
-    if (confirm("Set the current position as the middle position.")) {
-        cmdSend(set_mid, 0, 0);
-    }
-}
-function confirmSetTiltID() {
-    if (confirm("If you didn't disconnect the Tilt Servo in step 1, then both servo IDs will be set to 2 after you click the [Set Pan ID] button. Only in this case, you need to click [Set Tilt ID] to restore both servo IDs to 1, then repeat the entire setup process!")) {
-        cmdSend(s_tilid, 0, 0);
-    }
-}
-
-
-
-
 function cmdFill(rawInfo, fillInfo) {
     document.getElementById(rawInfo).value = document.getElementById(fillInfo).innerHTML;
 }
@@ -599,15 +564,6 @@ socket.on('update', function(data) {
         return;
     }
     try {
-        var baseBtn = document.getElementById("base_led_ctrl_btn");
-        var BButtons = baseBtn.getElementsByTagName("button");
-        removeButtonsClass(BButtons);
-        if (data[base_light] == 0) {
-            BButtons[0].classList.add("ctl_btn_active");
-        } else if (data[base_light] != 0){
-            BButtons[1].classList.add("ctl_btn_active");
-        }
-
         var advCBtn = document.getElementById("adv_cv_ctrl_btn");
         var CButtons = advCBtn.getElementsByTagName("button");
         removeButtonsClass(CButtons);
@@ -923,7 +879,6 @@ var keyMap = {
     67: "c",
     82: 'r',
     69: 'e',
-    70: 'f',
     71: 'g',
     72: 'h',
     73: 'i',
@@ -940,7 +895,6 @@ var ctrl_buttons = {
     c: 0,
     r: 0,
     e: 0,
-    f: 0,
     g: 0,
     h: 0,
     i: 0,
@@ -958,11 +912,6 @@ function updateButton(key, value) {
 }
 
 function cmdProcess() {
-    // Base Light Ctrl
-    if (ctrl_buttons.f == 1){
-        cmdSend(base_ct, 0, 0);
-    }
-
     // Photo Capture
     if (ctrl_buttons.e == 1){
         cmdSend(pic_cap, 0, 0);
