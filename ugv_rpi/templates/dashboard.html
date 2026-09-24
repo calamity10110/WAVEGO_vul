@@ -1,0 +1,375 @@
+<html lang="en-US">
+<head>
+    <title>WAVEGO Pro — Dashboard</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <script src="./socket.io.js"></script>
+    <script src="./js-yaml.min.js"></script>
+    <style>
+        :root {
+            --bg: #101418; --panel: #1a2129; --panel2: #212b36;
+            --line: #2d3a47; --txt: #d8e1ea; --dim: #8fa1b3;
+            --acc: #4fc3f7; --ok: #66bb6a; --warn: #ffa726; --bad: #ef5350;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: var(--bg); color: var(--txt); font-family: "Segoe UI", Roboto, Arial, sans-serif; }
+        a { color: var(--acc); text-decoration: none; }
+        header {
+            display: flex; align-items: center; gap: 14px;
+            padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line);
+        }
+        header h1 { font-size: 18px; font-weight: 600; }
+        .conn { display: flex; gap: 10px; margin-left: auto; font-size: 12px; color: var(--dim); }
+        .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--bad); margin-right: 4px; vertical-align: middle; }
+        .dot.on { background: var(--ok); }
+        main { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr); gap: 14px; padding: 14px; }
+        @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+        section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+        section h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--dim); margin-bottom: 10px; }
+        .video-wrap { position: relative; background: #000; border-radius: 8px; overflow: hidden; min-height: 240px; }
+        .video-wrap img { display: block; width: 100%; }
+        .video-badge {
+            position: absolute; top: 8px; left: 8px; font-size: 11px;
+            background: rgba(0,0,0,.55); padding: 3px 8px; border-radius: 4px; color: var(--acc);
+        }
+        .video-btns { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+        button {
+            background: var(--panel2); color: var(--txt); border: 1px solid var(--line);
+            border-radius: 7px; padding: 9px 14px; font-size: 14px; cursor: pointer; user-select: none;
+        }
+        button:hover { border-color: var(--acc); }
+        button.active { background: #0e3a52; border-color: var(--acc); color: #bfe8ff; }
+        button.danger { border-color: var(--bad); color: #ffb4ae; }
+        .telemetry { display: grid; gap: 8px; }
+        .tele-row {
+            display: flex; justify-content: space-between; align-items: baseline;
+            background: var(--panel2); border-radius: 7px; padding: 8px 12px;
+        }
+        .tele-row .k { color: var(--dim); font-size: 12px; }
+        .tele-row .v { font-size: 16px; font-weight: 600; }
+        .bat-bar { height: 8px; border-radius: 4px; background: #3a2b2b; overflow: hidden; margin-top: 6px; }
+        .bat-fill { height: 100%; width: 0%; background: var(--ok); transition: width .5s, background .5s; }
+        .divider { border-top: 1px solid var(--line); margin: 12px 0; }
+        .pad { display: grid; grid-template-columns: repeat(3, 64px); grid-template-rows: repeat(3, 56px); gap: 6px; justify-content: center; }
+        .pad button { font-size: 20px; }
+        .pad .blank { visibility: hidden; }
+        .speed-row { display: flex; gap: 8px; justify-content: center; margin-top: 10px; flex-wrap: wrap; }
+        .fn-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
+        @media (max-width: 500px) { .fn-grid { grid-template-columns: repeat(2, 1fr); } }
+        .stop-btn { width: 100%; margin-top: 10px; padding: 12px; font-size: 15px; font-weight: 700; }
+        .console-log {
+            margin-top: 10px; height: 110px; overflow-y: auto; font-family: Consolas, monospace;
+            font-size: 11px; background: #0b0f13; border: 1px solid var(--line); border-radius: 7px; padding: 8px;
+        }
+        .console-log .tx { color: var(--acc); }
+        .console-log .info { color: var(--dim); }
+        .json-send { display: flex; gap: 8px; margin-top: 10px; }
+        .json-send input {
+            flex: 1; background: #0b0f13; border: 1px solid var(--line); border-radius: 7px;
+            color: var(--txt); padding: 8px 10px; font-family: Consolas, monospace; font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+<header>
+    <h1>WAVEGO Pro Dashboard</h1>
+    <span style="font-size:12px;color:var(--dim)">RPi + ESP32 unified view</span>
+    <div class="conn">
+        <span><span id="dotCtrl" class="dot"></span>telemetry</span>
+        <span><span id="dotJson" class="dot"></span>esp32 link</span>
+        <a href="./">&laquo; main UI</a>
+    </div>
+</header>
+
+<main>
+    <div style="display:grid;gap:14px">
+        <section>
+            <h2>Camera Feed (RPi, MJPEG)</h2>
+            <div class="video-wrap">
+                <img id="feed" src="/video_feed" alt="camera feed">
+                <span class="video-badge" id="fpsBadge">FPS --</span>
+            </div>
+            <div class="video-btns">
+                <button id="btnPhoto">Capture Photo</button>
+                <button id="btnRec">Record Start</button>
+            </div>
+        </section>
+
+        <section>
+            <h2>Movement (heartbeat T:1) &mdash; press and hold</h2>
+            <div class="pad">
+                <button class="blank"></button>
+                <button data-dir="forward">&#9650;</button>
+                <button class="blank"></button>
+                <button data-dir="left">&#9664;</button>
+                <button id="btnStop" class="danger">&#9632;</button>
+                <button data-dir="right">&#9654;</button>
+                <button class="blank"></button>
+                <button data-dir="backward">&#9660;</button>
+                <button class="blank"></button>
+            </div>
+            <div class="speed-row">
+                <button data-spd="min">Low</button>
+                <button data-spd="mid" class="active">Mid</button>
+                <button data-spd="max">High</button>
+            </div>
+            <button id="btnEStop" class="danger stop-btn">STOP ALL (L:0 R:0)</button>
+        </section>
+
+        <section>
+            <h2>ESP32 JSON Console</h2>
+            <div class="json-send">
+                <input id="jsonInput" type="text" placeholder='{"T":106}' spellcheck="false">
+                <button id="btnJson">Send</button>
+            </div>
+            <div class="console-log" id="log"></div>
+        </section>
+    </div>
+
+    <div style="display:grid;gap:14px;align-content:start">
+        <section>
+            <h2>Lower Computer &mdash; ESP32 Mainboard</h2>
+            <div class="telemetry">
+                <div class="tele-row">
+                    <span class="k">BATTERY (INA219, 2S)</span>
+                    <span class="v"><span id="vBat">--</span> V</span>
+                </div>
+                <div class="bat-bar"><div class="bat-fill" id="batFill"></div></div>
+                <div class="tele-row">
+                    <span class="k">BATTERY STATE</span>
+                    <span class="v" id="batState">--</span>
+                </div>
+            </div>
+            <div class="divider"></div>
+            <h2>Body Functions (T:112 / T:110)</h2>
+            <div class="fn-grid">
+                <button id="fn1">StayLow</button>
+                <button id="fn2">HandShake</button>
+                <button id="fn3">Jump</button>
+                <button id="fn4">Steady ON</button>
+                <button id="fn5">Steady OFF</button>
+                <button id="fnStand">Stand (T:110)</button>
+            </div>
+            <div class="divider"></div>
+            <h2>RGB Presets (T:201)</h2>
+            <div class="fn-grid">
+                <button id="rgb0" class="active">Default</button>
+                <button id="rgb1">Red</button>
+                <button id="rgb2">Blue</button>
+            </div>
+        </section>
+
+        <section>
+            <h2>Upper Computer &mdash; Raspberry Pi</h2>
+            <div class="telemetry">
+                <div class="tele-row"><span class="k">CPU LOAD</span><span class="v"><span id="cpu">--</span> %</span></div>
+                <div class="tele-row"><span class="k">CPU TEMP</span><span class="v"><span id="temp">--</span> &deg;C</span></div>
+                <div class="tele-row"><span class="k">RAM USAGE</span><span class="v"><span id="ram">--</span> %</span></div>
+                <div class="tele-row"><span class="k">WIFI RSSI</span><span class="v"><span id="rssi">--</span> dBm</span></div>
+                <div class="tele-row"><span class="k">VIDEO FPS</span><span class="v" id="fps2">--</span></div>
+                <div class="tele-row"><span class="k">PHOTOS / VIDEOS SIZE</span><span class="v"><span id="media">--</span> MB</span></div>
+            </div>
+        </section>
+    </div>
+</main>
+
+<script>
+(function () {
+    var cfg = null, fb = {}, codes = {}, spd = {};
+    var hbL = 0, hbR = 0, rate = 0.66;
+    var pressed = { forward: 0, backward: 0, left: 0, right: 0 };
+    var recording = false;
+
+    function log(msg, cls) {
+        var box = document.getElementById('log');
+        var line = document.createElement('div');
+        line.className = cls || 'tx';
+        line.textContent = msg;
+        box.appendChild(line);
+        while (box.childNodes.length > 60) { box.removeChild(box.firstChild); }
+        box.scrollTop = box.scrollHeight;
+    }
+
+    fetch('/config').then(function (r) { return r.text(); }).then(function (t) {
+        var y = jsyaml.load(t);
+        cfg = y;
+        fb = y.fb;
+        codes = {
+            move: y.cmd_config.cmd_movition_ctrl,
+            pic: y.code.pic_cap,
+            vidSta: y.code.vid_sta,
+            vidEnd: y.code.vid_end
+        };
+        spd = {
+            max: y.args_config.max_speed,
+            slow: y.args_config.slow_speed,
+            min: y.args_config.min_rate,
+            mid: y.args_config.mid_rate,
+            maxr: y.args_config.max_rate
+        };
+        rate = y.args_config.mid_rate;
+        log('config loaded: move=T:' + codes.move + ' max=' + spd.max, 'info');
+    }).catch(function (e) { log('config load failed: ' + e, 'info'); });
+
+    var socketJson = io('http://' + location.host + '/json');
+    var socket = io('http://' + location.host + '/ctrl');
+
+    function connDot(id, on) { document.getElementById(id).classList.toggle('on', on); }
+    socketJson.on('connect', function () { connDot('dotJson', true); });
+    socketJson.on('disconnect', function () { connDot('dotJson', false); });
+    socket.on('connect', function () { connDot('dotCtrl', true); socket.emit('request_data'); });
+    socket.on('disconnect', function () { connDot('dotCtrl', false); });
+
+    function sendEsp(jsonData) {
+        if (jsonData.T === codes.move) {
+            jsonData.L = jsonData.L * rate;
+            jsonData.R = jsonData.R * rate;
+        }
+        socketJson.emit('json', jsonData);
+        log('TX ' + JSON.stringify(jsonData));
+    }
+
+    function sendCode(code) {
+        socket.send(JSON.stringify({ A: code, B: 0, C: 0 }));
+        log('TX code ' + code, 'info');
+    }
+
+    socket.on('update', function (data) {
+        if (!cfg) { return; }
+        try {
+            var v = data[fb.base_voltage];
+            document.getElementById('vBat').textContent = v.toFixed(2);
+            var fill = document.getElementById('batFill');
+            var pct = Math.max(0, Math.min(100, (v - 6.0) / 2.4 * 100));
+            fill.style.width = pct + '%';
+            fill.style.background = v >= 7 ? 'var(--ok)' : (v >= 6.5 ? 'var(--warn)' : 'var(--bad)');
+            document.getElementById('batState').textContent = v >= 8 ? 'FULL' : (v >= 7 ? 'GOOD' : (v >= 6.5 ? 'LOW' : 'CRITICAL'));
+
+            document.getElementById('cpu').textContent = data[fb.cpu_load];
+            document.getElementById('temp').textContent = data[fb.cpu_temp].toFixed(1);
+            document.getElementById('ram').textContent = data[fb.ram_usage];
+            document.getElementById('rssi').textContent = data[fb.wifi_rssi];
+            var fps = data[fb.video_fps].toFixed(1);
+            document.getElementById('fps2').textContent = fps;
+            document.getElementById('fpsBadge').textContent = 'FPS ' + fps;
+            document.getElementById('media').textContent =
+                data[fb.picture_size] + ' / ' + data[fb.video_size];
+        } catch (e) { /* partial data before config load */ }
+    });
+
+    // movement: press-and-hold d-pad, values from active direction set
+    function recompute() {
+        var f = pressed.forward, b = pressed.backward, l = pressed.left, r = pressed.right;
+        if (!f && !b && !l && !r) { hbL = 0; hbR = 0; }
+        else if (f && !l && !r) { hbL = spd.max; hbR = spd.max; }
+        else if (b && !l && !r) { hbL = -spd.max; hbR = -spd.max; }
+        else if (!f && !b && l) { hbL = -spd.max; hbR = spd.max; }
+        else if (!f && !b && r) { hbL = spd.max; hbR = -spd.max; }
+        else if (f && l) { hbL = spd.slow; hbR = spd.max; }
+        else if (f && r) { hbL = spd.max; hbR = spd.slow; }
+        else if (b && l) { hbL = -spd.slow; hbR = -spd.max; }
+        else if (b && r) { hbL = -spd.max; hbR = -spd.slow; }
+        else { hbL = 0; hbR = 0; }
+        sendEsp({ T: codes.move, L: hbL, R: hbR });
+    }
+
+    Array.prototype.forEach.call(document.querySelectorAll('.pad [data-dir]'), function (btn) {
+        var dir = btn.getAttribute('data-dir');
+        function down(e) { e.preventDefault(); pressed[dir] = 1; btn.classList.add('active'); recompute(); }
+        function up() { pressed[dir] = 0; btn.classList.remove('active'); recompute(); }
+        btn.addEventListener('pointerdown', down);
+        btn.addEventListener('pointerup', up);
+        btn.addEventListener('pointerleave', up);
+        btn.addEventListener('pointercancel', up);
+    });
+
+    function stopAll() {
+        pressed = { forward: 0, backward: 0, left: 0, right: 0 };
+        Array.prototype.forEach.call(document.querySelectorAll('.pad [data-dir]'), function (b) { b.classList.remove('active'); });
+        hbL = 0; hbR = 0;
+        sendEsp({ T: codes.move, L: 0, R: 0 });
+    }
+    document.getElementById('btnStop').addEventListener('click', stopAll);
+    document.getElementById('btnEStop').addEventListener('click', stopAll);
+    window.addEventListener('blur', stopAll);
+
+    Array.prototype.forEach.call(document.querySelectorAll('[data-spd]'), function (btn) {
+        btn.addEventListener('click', function () {
+            Array.prototype.forEach.call(document.querySelectorAll('[data-spd]'), function (b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            var k = btn.getAttribute('data-spd');
+            rate = (k === 'min') ? spd.min : (k === 'max') ? spd.maxr : spd.mid;
+        });
+    });
+
+    // heartbeat: keep gait alive while a direction is held
+    setInterval(function () {
+        if (socketJson.connected && (hbL !== 0 || hbR !== 0)) {
+            sendEsp({ T: codes.move, L: hbL, R: hbR });
+        }
+    }, 2000);
+
+    // body functions
+    function fnButton(id, json) {
+        document.getElementById(id).addEventListener('click', function () { sendEsp(json); });
+    }
+    fnButton('fn1', { T: 112, func: 1 });
+    fnButton('fn2', { T: 112, func: 2 });
+    fnButton('fn3', { T: 112, func: 3 });
+    fnButton('fn4', { T: 112, func: 4 });
+    fnButton('fn5', { T: 112, func: 5 });
+    fnButton('fnStand', { T: 110 });
+
+    // rgb presets
+    function rgbButton(id, c0, c1) {
+        document.getElementById(id).addEventListener('click', function () {
+            Array.prototype.forEach.call(['rgb0', 'rgb1', 'rgb2'], function (b) { document.getElementById(b).classList.remove('active'); });
+            document.getElementById(id).classList.add('active');
+            sendEsp({ T: 201, set: [0, c0[0], c0[1], c0[2]] });
+            sendEsp({ T: 201, set: [1, c1[0], c1[1], c1[2]] });
+        });
+    }
+    rgbButton('rgb0', [255, 0, 64], [64, 0, 255]);
+    rgbButton('rgb1', [255, 0, 0], [255, 0, 0]);
+    rgbButton('rgb2', [0, 0, 255], [0, 0, 255]);
+
+    // media
+    document.getElementById('btnPhoto').addEventListener('click', function () {
+        if (codes.pic) { sendCode(codes.pic); }
+    });
+    document.getElementById('btnRec').addEventListener('click', function () {
+        if (!codes.vidSta) { return; }
+        if (!recording) {
+            sendCode(codes.vidSta);
+            recording = true;
+            this.textContent = 'Record Stop';
+            this.classList.add('active');
+        } else {
+            sendCode(codes.vidEnd);
+            recording = false;
+            this.textContent = 'Record Start';
+            this.classList.remove('active');
+        }
+    });
+
+    // json console
+    function sendManual() {
+        var raw = document.getElementById('jsonInput').value.trim();
+        if (!raw) { return; }
+        try {
+            sendEsp(JSON.parse(raw));
+            document.getElementById('jsonInput').value = '';
+        } catch (e) {
+            log('invalid JSON: ' + e.message, 'info');
+        }
+    }
+    document.getElementById('btnJson').addEventListener('click', sendManual);
+    document.getElementById('jsonInput').addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { sendManual(); }
+    });
+
+    log('dashboard ready — waiting for config and telemetry', 'info');
+})();
+</script>
+</body>
+</html>
