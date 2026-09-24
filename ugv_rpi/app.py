@@ -429,6 +429,45 @@ def handle_command():
         print(f"[app.handle_command] error: {e}")
     return jsonify({"status": "success", "message": "Command received"})
 
+# control bypass API: raw JSON passthrough for external applications
+@app.route('/api/cmd', methods=['POST'])
+def api_cmd():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or 'T' not in data:
+        return jsonify(success=False, error='JSON object body with integer field "T" required'), 400
+    base.base_json_ctrl(data)
+    return jsonify(success=True, sent=data)
+
+@app.route('/api/status')
+def api_status():
+    base_data = base.base_data if isinstance(base.base_data, dict) else {}
+    status = {
+        'robot_name': f['base_config']['robot_name'],
+        'esp32': {
+            'battery_voltage': base_data.get('v'),
+            'raw_feedback': base_data,
+        },
+        'rpi': {
+            'cpu_load': si.cpu_load,
+            'cpu_temp': si.cpu_temp,
+            'ram_usage': si.ram,
+            'wifi_rssi': si.wifi_rssi,
+        },
+        'video': {
+            'fps': cvf.video_fps,
+            'mjpeg_url': '/video_feed',
+            'webrtc_offer_url': '/offer',
+        },
+        'cv': {
+            'mode': cvf.cv_mode,
+            'motion_lock': cvf.cv_movtion_lock,
+            'pan_angle': cvf.pan_angle,
+            'tilt_angle': cvf.tilt_angle,
+        },
+    }
+    return jsonify(status)
+
+
 @app.route('/getAudioFiles', methods=['GET'])
 def get_audio_files():
     files = [f for f in os.listdir(UPLOAD_FOLDER) if os.path.isfile(os.path.join(UPLOAD_FOLDER, f)) and (f.endswith('.mp3') or f.endswith('.wav'))]

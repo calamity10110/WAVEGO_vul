@@ -73,6 +73,24 @@ Everything else the firmware understands (47 commands — missions, gait tuning,
 | `/get_photo_names`, `/delete_photo`, `/get_video_names`, `/delete_video`, `/videos/<f>` | GET/POST | media galleries |
 | `/getAudioFiles`, `/uploadAudio`, `/playAudio`, `/stop_audio` | GET/POST | audio library |
 
+### Control bypass API (external applications)
+
+For programs on or off the Raspberry Pi that need to drive the robot or read sensors without the web UI:
+
+| Route | Method | Purpose |
+|---|---|---|
+| `/api/cmd` | POST | raw JSON passthrough to the ESP32 — body must be a command object with an integer `T` field (e.g. `{"T":111,"FB":1,"LR":0}`); returns `{"success":true,"sent":{...}}` |
+| `/api/status` | GET | sensor/status snapshot: ESP32 battery voltage + last raw feedback, RPi CPU/temp/RAM/RSSI, video FPS + stream URLs, CV mode |
+| `/video_feed` | GET | MJPEG camera stream (consume directly from any client) |
+| `/offer` | POST | WebRTC signaling for the camera |
+
+Example from another machine:
+
+    curl -X POST http://<robot-ip>:5000/api/cmd -H "Content-Type: application/json" -d '{"T":112,"func":3}'
+    curl http://<robot-ip>:5000/api/status
+
+Note: the API is unauthenticated, like the rest of the app — intended for trusted LAN use.
+
 ### WebSockets (Flask-SocketIO)
 
 - `/ctrl` — inbound `{"A": <code>, ...}`; `code` values come from `config.yaml` `code:` section (movement keys, CV modes, photo/video, LED modes, motion lock). Unknown codes are ignored.
