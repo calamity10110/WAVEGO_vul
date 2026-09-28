@@ -1,0 +1,29 @@
+api_base_robot: http://127.0.0.1:5000
+frame_url: http://127.0.0.1:5000/video_feed
+service_port: 5001
+
+fast_engine:
+  checkpoint_dir: /home/pi/intern-decision/Intern-Decision-0.8B
+  device: cpu
+
+online_verifier:
+  base_url: ""
+  model: ""
+  timeout_s: 10
+  send_images: false
+
+verification:
+  claim_conf_min: 0.75
+  act_conf_min: 0.75
+
+loop:
+  max_cycles: 60
+  max_seconds: 180
+  stall_cycles: 6
+  verify_every_n: 4
+  move_timeout_s: 6
+  cycle_min_s: 2.5
+
+capture:
+  resize_px: 448
+  jpeg_quality: 60
