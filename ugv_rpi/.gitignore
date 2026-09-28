@@ -5,3 +5,5 @@ tutorial_en/.ipynb_checkpoints/
 tutorial_cn/.ipynb_checkpoints/
 templates/pictures/photo*
 templates/videos/video*
+vlm_ctrl/media_frames/
+voice/sounds/
