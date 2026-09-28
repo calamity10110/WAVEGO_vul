@@ -101,6 +101,15 @@ cmd_actions = {
     f['code']['head_ct']: lambda: cvf.head_light_ctrl(3)
 }
 
+if 'cv_person' in f['code']:
+    cmd_actions[f['code']['cv_person']] = lambda: cvf.set_cv_mode(f['code']['cv_person'])
+
+CV_MODE_NAMES = {
+    'none': 'cv_none', 'motion': 'cv_moti', 'face': 'cv_face',
+    'objects': 'cv_objs', 'person': 'cv_person', 'color': 'cv_clor',
+    'hand': 'mp_hand', 'auto': 'cv_auto', 'mp_face': 'mp_face', 'mp_pose': 'mp_pose',
+}
+
 cmd_feedback_actions = [f['code']['cv_none'], f['code']['cv_moti'],
                         f['code']['cv_face'], f['code']['cv_objs'],
                         f['code']['cv_clor'], f['code']['mp_hand'],
@@ -111,6 +120,9 @@ cmd_feedback_actions = [f['code']['cv_none'], f['code']['cv_moti'],
                         f['code']['led_off'], f['code']['led_aut'],
                         f['code']['led_ton'], f['code']['head_ct']
                         ]
+
+if 'cv_person' in f['code']:
+    cmd_feedback_actions.append(f['code']['cv_person'])
 
 # cv info process
 def process_cv_info(cmd):
@@ -477,6 +489,67 @@ def api_status():
         },
     }
     return jsonify(status)
+
+
+@app.route('/api/cv', methods=['GET', 'POST'])
+def api_cv():
+    if request.method == 'GET':
+        mode_name = None
+        for name, key in CV_MODE_NAMES.items():
+            if f['code'].get(key) == cvf.cv_mode:
+                mode_name = name
+                break
+        return jsonify(mode=mode_name, mode_code=cvf.cv_mode,
+                       motion_lock=cvf.cv_movtion_lock)
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify(success=False, error='JSON object body required'), 400
+    changed = {}
+    if 'mode' in data:
+        mode_key = CV_MODE_NAMES.get(str(data['mode']).lower())
+        if mode_key is None or mode_key not in f['code']:
+            return jsonify(success=False,
+                           error='unknown mode "{}", valid: {}'.format(data['mode'], sorted(CV_MODE_NAMES))), 400
+        cvf.set_cv_mode(f['code'][mode_key])
+        changed['mode'] = data['mode']
+    if 'motion_lock' in data:
+        cvf.set_movtion_lock(bool(data['motion_lock']))
+        changed['motion_lock'] = bool(data['motion_lock'])
+    return jsonify(success=True, **changed,
+                   mode=cvf.cv_mode, motion_lock=cvf.cv_movtion_lock)
+
+
+VLM_SERVICE = "http://127.0.0.1:5001"
+
+
+def _vlm_proxy(path, payload=None):
+    import requests as _rq
+    try:
+        if payload is None:
+            r = _rq.get(VLM_SERVICE + path, timeout=3)
+        else:
+            r = _rq.post(VLM_SERVICE + path, json=payload, timeout=5)
+        return (r.json(), r.status_code)
+    except Exception:
+        return {"success": False, "error": "vlm service not running"}, 503
+
+
+@app.route('/api/vlm', methods=['GET', 'POST'])
+def api_vlm():
+    if request.method == 'GET':
+        body, code = _vlm_proxy('/api/vlm')
+        return jsonify(body), code
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or not (data.get('goal') or data.get('goals')):
+        return jsonify(success=False, error='goal or goals required'), 400
+    body, code = _vlm_proxy('/api/vlm', data)
+    return jsonify(body), code
+
+
+@app.route('/api/vlm/stop', methods=['POST'])
+def api_vlm_stop():
+    body, code = _vlm_proxy('/api/vlm/stop', {})
+    return jsonify(body), code
 
 
 @app.route('/getAudioFiles', methods=['GET'])

@@ -126,6 +126,18 @@
             </div>
             <div class="console-log" id="log"></div>
         </section>
+
+        <section>
+            <h2>AI Goal (VLM)</h2>
+            <div class="json-send">
+                <input id="vlmGoal" type="text" placeholder="find the red ball and stop in front of it" spellcheck="false">
+                <button id="btnVlmStart">Start</button>
+            </div>
+            <div class="video-btns">
+                <button id="btnVlmStop" class="danger">Stop Task</button>
+                <span id="vlmState" style="font-size:12px;color:var(--dim)">idle</span>
+            </div>
+        </section>
     </div>
 
     <div style="display:grid;gap:14px;align-content:start">
@@ -371,6 +383,32 @@
     });
 
     log('dashboard ready — waiting for config and telemetry', 'info');
+})();
+</script>
+<script>
+(function () {
+    var state = document.getElementById('vlmState');
+    function refresh() {
+        fetch('/api/vlm').then(function (r) { return r.json(); }).then(function (d) {
+            var s = d.session;
+            state.textContent = s
+                ? (s.state + ' · cycle ' + s.cycles + ' · ' + s.goal)
+                : (d.engine_loaded ? 'idle' : 'engine loading');
+        }).catch(function () { state.textContent = 'vlm service down'; });
+    }
+    document.getElementById('btnVlmStart').onclick = function () {
+        var g = document.getElementById('vlmGoal').value.trim();
+        if (!g) { state.textContent = 'type a goal first'; return; }
+        fetch('/api/vlm', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ goal: g })
+        }).then(refresh);
+    };
+    document.getElementById('btnVlmStop').onclick = function () {
+        fetch('/api/vlm/stop', { method: 'POST' }).then(refresh);
+    };
+    setInterval(refresh, 3000);
+    refresh();
 })();
 </script>
 </body>
