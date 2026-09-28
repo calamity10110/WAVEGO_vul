@@ -80,6 +80,9 @@ For programs on or off the Raspberry Pi that need to drive the robot or read sen
 | Route | Method | Purpose |
 |---|---|---|
 | `/api/cmd` | POST | raw JSON passthrough to the ESP32 — body must be a command object with an integer `T` field (e.g. `{"T":111,"FB":1,"LR":0}`); returns `{"success":true,"sent":{...}}`. Optional `?sync_ms=500` short-polls (max 3000 ms) for the negative-`T` reply of query commands (T:106 positions, T:207 battery) and returns it as `response` |
+| `/api/cv` | GET/POST | switch/query CV modes + motion lock by name — `GET` returns `{"mode":"person","mode_code":10310,"motion_lock":false}`; `POST {"mode":"..."}` and/or `{"motion_lock":bool}`. Valid mode names: `none, motion, face, objects, color, hand, auto, mp_face, mp_pose, person` |
+| `/api/vlm` | GET/POST | proxy to the VLM goal service (`vlm_ctrl`, port 5001) — `GET` returns session status; `POST {"goal":"..."}` or `{"goals":[...]}` (sequential = autonomous mode); 503 when the service is not running |
+| `/api/vlm/stop` | POST | stop robot motion + end the current VLM session |
 | `/api/status` | GET | sensor/status snapshot: ESP32 battery voltage + last raw feedback, RPi CPU/temp/RAM/RSSI, video FPS + stream URLs, CV mode |
 | `/video_feed` | GET | MJPEG camera stream (consume directly from any client) |
 | `/offer` | POST | WebRTC signaling for the camera |
@@ -92,6 +95,66 @@ Example from another machine:
     curl http://<robot-ip>:5000/api/status
 
 Note: the API is unauthenticated, like the rest of the app — intended for trusted LAN use.
+
+### Person following (FOLLOW mode)
+
+The FOLLOW button in the web UI (or `POST /api/cv {"mode":"person"}`) starts a person-follow mode built on the bundled MobileNet-SSD detector (`models/mobilenet_iter_73000.caffemodel`, person class). Control policy (see `follow_ctrl.py`, unit-tested in `tests/`):
+
+- target off-center beyond `person_deadzone` (fraction of frame width) → turn toward it (`{"T":111,"FB":0,"LR":±1}`)
+- centered and bounding-box height < `person_far_ratio` → walk forward (`FB=1`)
+- centered and box height > `person_near_ratio` → stop (too close); values between the two thresholds hold the previous move/stop decision (hysteresis band, prevents boundary oscillation)
+- no person for `person_lost_frames` consecutive frames → stop
+
+Commands are discrete `T:111` vectors per the firmware contract and are sent only on decision change. A frame-tick watchdog stops the robot if the video pipeline stalls for >2 s while the mode is active; leaving the mode (switching to any other mode, or pressing LOCK) sends an immediate stop. Movement is gated by the existing motion-lock like other tracking modes. Tuning: `config.yaml` → `cv: person_*`.
+
+### Known limitation: motion commands outlive the controlling process
+
+`T:111` gait commands are **level-based** — the ESP32 firmware repeats the last command until the next one arrives. There is no command timeout in the firmware, so if the process that issued a movement dies before sending a stop, **the robot keeps walking**. Concretely:
+
+- `app.py` crashing, being killed, or the Pi rebooting / losing power mid-walk while the mainboard stays powered — this affects person-follow, the web movement pad, and keyboard control alike (pre-existing exposure, not introduced by the follow mode)
+- the voice assistant dying inside the `move_timeout_s` window — the auto-stop is enforced by the voice process itself
+
+Safeguards that do **not** cover whole-process death: the follow-mode watchdog (>2 s video stall), stop-on-mode-exit, LOCK, voice `move_timeout_s`. Once the controlling process is gone, the web UI cannot help either — it is served by the same dead process — and the **only stop is physical: the power switch or battery disconnect**.
+
+Operational recommendations:
+
+1. **Suspension first**: for any new build or parameter change, put the robot on a stand (belly supported, feet off the ground) and verify mode/state behavior with zero locomotion risk.
+2. **Leash on first ground tests**: attach a drag line to the chassis before enabling FOLLOW or voice movement on the ground.
+3. **Rehearse the failure**: know where the power switch is before the first autonomous walk. On a leash, test it deliberately — start following, `pkill -f app.py`, observe that the robot keeps moving, cut power. That is expected behavior, not a bug to chase.
+4. The definitive fix is firmware-side — a gait auto-timeout in `wavego_pro_platformio` (stop when no `T:111`/`T:1` arrives within N ms). Future work; everything above is mitigation until it exists.
+
+## Voice assistant (optional)
+
+`voice/voice_assistant.py` is a persistent voice-command process: USB mic (16 kHz mono) → energy VAD with endpointing → Moonshine ONNX transcription → phrase grammar in `voice/voice_config.yaml` → robot via `/api/cmd` and `/api/cv`. The model is loaded once at startup — per-utterance cost is inference only (spawning a fresh Python+ONNX process per command costs ~3.2 s, which is what this design avoids). Gait commands are level-based, so every voice-triggered movement auto-stops after `move_timeout_s` (default 3 s) unless a follow-up command arrives. If the voice process itself dies inside that window, the gait persists — see [*Known limitation*](#known-limitation-motion-commands-outlive-the-controlling-process) above.
+
+Install on the robot (from `ugv_rpi/`):
+
+    ./install_voice.sh                       # deps + systemd service + speaker volume fix
+    ./install_voice.sh --check-autostart     # scan for duplicate/legacy autostart entries
+    ./install_voice.sh --clean-listen        # remove legacy listen.py cron lines
+    ./install_voice.sh --uninstall
+    journalctl -u wavego-voice -f            # live logs
+
+Hardware mapping (adjust `voice/voice_config.yaml` to match `aplay -l` / `arecord -l`): mic = C-Media USB device (found by `mic.name_hint`, card 1 in the reference setup), speaker = Jieli card 0; feedback beeps play through `aplay -D plughw:0,0` so the speaker device is never held open. The installer also raises the speaker PCM to 85 % (`SPEAKER_CARD`/`SPEAKER_VOLUME` env overrides) and runs `alsactl store`.
+
+Default grammar: *stop following / follow me* (CV mode switch), *find the ball / vision task / explore* (VLM goal sessions), *stop task / cancel task*, *stop / halt*, *sit down / stand up / jump*, *forward / back / turn left / turn right*. Phrases map to raw T-commands, CV mode switches, or VLM goals; first match wins (ordered token matching, so filler words are tolerated), so keep specific phrases above generic ones in the config.
+
+## VLM goal control (optional)
+
+`vlm_ctrl/` is a goal-session runtime driven by an onboard vision-language decision model (Intern-Decision-0.8B, fine-tuned from Qwen3.5-0.8B): camera frame + goal in → one forward pass per cycle → action label + goal status with calibrated probabilities → validated, verified, then dispatched as whitelist commands through `/api/cmd`. Runs as a separate systemd service (`python -m vlm_ctrl.service`, port 5001; `app.py` proxies `/api/vlm`) so torch never loads into the main app.
+
+Verification is software-first — the model never emits raw T-commands (labels map to a 9-command whitelist), decisions pass a JSON schema, a text-coherence heuristic, calibrated confidence thresholds, and temporal persistence: a *reached/impossible* claim is only trusted after it appears with high confidence on two different frames. An optional online verifier (any OpenAI-compatible endpoint, `online_verifier:` in `vlm_ctrl/config.yaml`) audits high-stakes moments and degrades silently to software checks when unreachable. Failure ladder per decision: retry with error feedback, escalate, and after 3 strikes send STOP and end the session. Every session ends in a stop unless the final action is a safe pose; movement dispatches re-arm a move-timeout.
+
+Install on the robot (from `ugv_rpi/`):
+
+    # 1. download the checkpoint, then point fast_engine.checkpoint_dir at it:
+    #    https://huggingface.co/internlm/Intern-Decision-0.8B
+    ./install_vlm.sh                # deps + systemd service
+    ./install_vlm.sh --benchmark    # latency gate: mean cycle must be <= 2.5 s
+    ./install_vlm.sh --check
+    journalctl -u wavego-vlm -f
+
+If the benchmark fails the gate, set `capture.resize_px: 224` in `vlm_ctrl/config.yaml` and re-run. Triggers: dashboard **AI Goal** box, `POST /api/vlm`, or the voice phrases above. RAM: the engine needs ~3 GB resident alongside the main app (~1.5 GB) on the 8 GB Pi — avoid running VLM sessions and FOLLOW mode simultaneously. The [known limitation](#known-limitation-motion-commands-outlive-the-controlling-process) applies to VLM-driven movement too.
 
 ### WebSockets (Flask-SocketIO)
 
@@ -112,7 +175,7 @@ All runtime settings live in **`config.yaml`**:
 | `base_config` | `robot_name`, `main_type` (2), `module_type` (0), `use_lidar`, `extra_sensor` | identity & hardware options |
 | `args_config` | `max_speed`, `slow_speed`, `min/mid/max_rate` | speed scaling for keyboard/web pad |
 | `video` | `default_res_w/h` (640×480), `default_quality` | camera output |
-| `cv` | `color_lower/upper`, `default_color`, `track_*_iterate`, `track_spd_rate`, `aimed_error`, `min_radius` | color tracking & CV tuning |
+| `cv` | `color_lower/upper`, `default_color`, `track_*_iterate`, `track_spd_rate`, `aimed_error`, `min_radius`, `person_*` (follow mode: confidence, deadzone, far/near ratio, lost frames, class id) | color tracking, person following & CV tuning |
 | `audio_config` | `audio_output`, `default_volume`, `min_time_bewteen_play` | audio behavior |
 | `code` / `fb` | numeric UI command/feedback codes | contract with `control.js` |
 | `cmd_config` | `cmd_movition_ctrl` (1), `cmd_gimbal_ctrl` (133), `cmd_gimbal_steady` (137), `cmd_arm_ctrl_ui` (144), `cmd_pwm_ctrl` (11) | T-code overrides |
@@ -130,8 +193,20 @@ ugv_rpi/
 ├── base_ctrl.py         # BaseController: threaded serial JSON queue, ReadLine parser,
 │                        #   emitters (T:1/133/201/202), breath_light demo
 ├── cv_ctrl.py           # CameraFlinger/CV engine: USB→CSI→OAK detect, Picamera2/OpenCV,
-│                        #   face/color/motion/gesture/line modes, WebRTC frames,
-│                        #   photo/video capture, timelapse, cv_light_mode RGB indicator
+│                        #   face/color/motion/gesture/line modes, person-follow mode,
+│                        #   WebRTC frames, photo/video capture, timelapse, cv_light_mode
+├── follow_ctrl.py       # person-follow control policy: dead-zone, hysteresis band,
+│                        #   lost-frame counter → discrete T:111 FB/LR decisions (pure logic)
+├── tests/               # unit tests for follow_ctrl (run: python -m pytest tests/)
+├── voice/               # persistent voice assistant: Moonshine ONNX + energy VAD +
+│                        #   voice_config.yaml grammar → /api/cmd + /api/cv + /api/vlm
+├── install_voice.sh     # voice service installer: systemd unit, speaker volume fix,
+│                        #   autostart duplicate scanner (--check-autostart/--clean-listen)
+├── vlm_ctrl/            # VLM goal control: Intern-Decision engine, goal-session state
+│                        #   machine (3-strike ladder, claim verification, stall detection),
+│                        #   software+optional-online verification, benchmark harness
+│                        #   (python -m vlm_ctrl.benchmark, gate 2.5 s/cycle)
+├── install_vlm.sh       # VLM service installer: systemd unit, deps, checkpoint check
 ├── audio_ctrl.py        # TTS / audio playback helpers
 ├── os_info.py           # system info (si): CPU/RAM/temp, IP addresses, RSSI, folders
 ├── config.yaml          # all runtime settings (see Settings)
