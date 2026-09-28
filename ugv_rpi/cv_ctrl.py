@@ -9,6 +9,7 @@ import math
 import yaml, os, json, subprocess
 from collections import deque
 import textwrap
+from follow_ctrl import FollowPolicy
 
 # libraries for csi camera
 from picamera2 import Picamera2
@@ -93,6 +94,21 @@ class OpencvFuncs():
                             "bottle", "bus", "car", "cat", "chair", "cow", "diningtable",
                             "dog", "horse", "motorbike", "person", "pottedplant", "sheep",
                             "sofa", "train", "tvmonitor"]
+
+        # person follow mode
+        self.person_class_id = f['cv'].get('person_class_id', 15)
+        self.person_confidence = f['cv'].get('person_confidence', 0.5)
+        self.follow_policy = FollowPolicy(
+            deadzone=f['cv'].get('person_deadzone', 0.12),
+            near_ratio=f['cv'].get('person_near_ratio', 0.72),
+            far_ratio=f['cv'].get('person_far_ratio', 0.45),
+            lost_frames=f['cv'].get('person_lost_frames', 12))
+        self.follow_last_cmd = (None, None)
+        self.follow_last_state = None
+        self.follow_last_tick = time.time()
+        self.follow_watchdog_timeout = 2.0
+        self.follow_watchdog_stop = threading.Event()
+        self.follow_watchdog_thread = None
 
         # mediapipe
         self.mpDraw = mp.solutions.drawing_utils
@@ -381,9 +397,16 @@ class OpencvFuncs():
             self.video_quality = int(input_quality)
 
     def set_cv_mode(self, input_mode):
+        prev_mode = self.cv_mode
         self.cv_mode = input_mode
         if self.cv_mode == f['code']['cv_none']:
             self.set_video_record_flag = False
+        follow_code = f['code'].get('cv_person')
+        if follow_code is not None:
+            if prev_mode == follow_code and input_mode != follow_code:
+                self.follow_stop()
+            elif prev_mode != follow_code and input_mode == follow_code:
+                self.follow_start()
 
     def set_detection_reaction(self, input_reaction):
         self.detection_reaction_mode = input_reaction
@@ -545,6 +568,90 @@ class OpencvFuncs():
                 cv2.putText(overlay_buffer, label, (startX, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
         self.overlay = overlay_buffer
+
+    def cv_follow_person(self, img):
+        overlay_buffer = np.zeros_like(img)
+        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+        (h, w) = img.shape[:2]
+        blob = cv2.dnn.blobFromImage(cv2.resize(img_rgb, (300, 300)), 0.007843, (300, 300), 127.5)
+        self.net.setInput(blob)
+        detections = self.net.forward()
+
+        best = None
+        for i in range(0, detections.shape[2]):
+            confidence = detections[0, 0, i, 2]
+            if confidence < self.person_confidence:
+                continue
+            idx = int(detections[0, 0, i, 1])
+            if idx != self.person_class_id:
+                continue
+            box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
+            (startX, startY, endX, endY) = box.astype("int")
+            area = (endX - startX) * (endY - startY)
+            if best is None or area > best[0]:
+                best = (area, confidence, startX, startY, endX, endY)
+
+        if best is not None:
+            area, confidence, startX, startY, endX, endY = best
+            x_offset = ((startX + endX) / 2 - w / 2) / w
+            height_ratio = (endY - startY) / h
+            decision = self.follow_policy.update(True, x_offset, height_ratio)
+            cv2.rectangle(overlay_buffer, (startX, startY), (endX, endY), (0, 255, 0), 2)
+            label_y = startY - 10 if startY - 10 > 10 else startY + 20
+            cv2.putText(overlay_buffer, 'PERSON: {:.0f}%'.format(confidence * 100),
+                        (startX, label_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+        else:
+            decision = self.follow_policy.update(False)
+
+        self.follow_last_tick = time.time()
+        cv2.putText(overlay_buffer, 'FOLLOW: {}'.format(decision.state),
+                    (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
+        if decision.state != self.follow_last_state:
+            if decision.state == 'LOST':
+                self.base_ctrl.send_command({"T":201,"set":[0,0,0,255]})
+                self.base_ctrl.send_command({"T":201,"set":[1,0,0,255]})
+            else:
+                self.base_ctrl.send_command({"T":201,"set":[0,0,255,0]})
+                self.base_ctrl.send_command({"T":201,"set":[1,0,255,0]})
+            self.follow_last_state = decision.state
+
+        if not self.cv_movtion_lock:
+            cmd = (decision.fb, decision.lr)
+            if cmd != self.follow_last_cmd:
+                self.base_ctrl.base_json_ctrl({"T":111,"FB":decision.fb,"LR":decision.lr})
+                self.follow_last_cmd = cmd
+
+        self.overlay = overlay_buffer
+
+    def follow_watchdog(self):
+        stopped = False
+        while not self.follow_watchdog_stop.wait(0.5):
+            if time.time() - self.follow_last_tick > self.follow_watchdog_timeout:
+                if not stopped:
+                    self.base_ctrl.base_json_ctrl({"T":111,"FB":0,"LR":0})
+                    stopped = True
+            else:
+                stopped = False
+
+    def follow_start(self):
+        self.follow_policy.reset()
+        self.follow_last_cmd = (None, None)
+        self.follow_last_state = None
+        self.follow_last_tick = time.time()
+        self.follow_watchdog_stop.clear()
+        if self.follow_watchdog_thread is None or not self.follow_watchdog_thread.is_alive():
+            self.follow_watchdog_thread = threading.Thread(target=self.follow_watchdog, daemon=True)
+            self.follow_watchdog_thread.start()
+
+    def follow_stop(self):
+        if self.follow_watchdog_thread is not None and self.follow_watchdog_thread.is_alive():
+            self.follow_watchdog_stop.set()
+        self.follow_policy.reset()
+        self.follow_last_cmd = (None, None)
+        self.follow_last_state = None
+        self.base_ctrl.base_json_ctrl({"T":111,"FB":0,"LR":0})
 
     def cv_detect_color(self, img):
         global head_light_pwm
@@ -953,6 +1060,8 @@ class OpencvFuncs():
             f['code']['mp_face']: self.mediaPipe_faces,
             f['code']['mp_pose']: self.mediaPipe_pose
         }
+        if f['code'].get('cv_person') is not None:
+            cv_mode_list[f['code']['cv_person']] = self.cv_follow_person
         try:
             cv_mode_list[self.cv_mode](frame)
         except Exception as e:
@@ -978,6 +1087,10 @@ class OpencvFuncs():
             self.tilt_angle = 0
         else:
             self.cv_movtion_lock = True
+            if self.cv_mode == f['code'].get('cv_person'):
+                self.follow_policy.reset()
+                self.follow_last_cmd = (None, None)
+                self.base_ctrl.base_json_ctrl({"T":111,"FB":0,"LR":0})
 
 
 

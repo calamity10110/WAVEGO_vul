@@ -33,6 +33,7 @@ code:
   cv_moti: 10302
   cv_none: 10301
   cv_objs: 10304
+  cv_person: 10310
   head_ct: 10409
   led_aut: 10405
   led_off: 10404
@@ -66,6 +67,12 @@ cv:
   - 255
   default_color: blue
   min_radius: 12
+  person_class_id: 15
+  person_confidence: 0.5
+  person_deadzone: 0.12
+  person_far_ratio: 0.45
+  person_lost_frames: 12
+  person_near_ratio: 0.72
   sampling_rad: 25
   track_acc_rate: 0.4
   track_color_iterate: 0.023

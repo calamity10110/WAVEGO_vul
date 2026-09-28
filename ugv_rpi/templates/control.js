@@ -7,6 +7,7 @@ var pic_cap, vid_sta, vid_end;
 var mc_lock, mc_unlo;
 var cv_none, cv_moti, cv_face, cv_objs, cv_clor, mp_hand, cv_auto;
 var mp_face, mp_pose;
+var cv_person;
 var re_none, re_capt, re_reco, led_off, led_aut, led_ton;
 var head_ct;
 var armZ, armR, armE;
@@ -67,6 +68,9 @@ fetch('/config')
       cv_auto = yamlObject.code.cv_auto;
       mp_face = yamlObject.code.mp_face;
       mp_pose = yamlObject.code.mp_pose;
+      if (yamlObject.code.cv_person !== undefined) {
+        cv_person = yamlObject.code.cv_person;
+      }
 
       re_none = yamlObject.code.re_none;
       re_capt = yamlObject.code.re_capt;
@@ -602,6 +606,8 @@ socket.on('update', function(data) {
             MPButtons[0].classList.add("ctl_btn_active");
         } else if (data[detect_type] == mp_pose) {
             MPButtons[1].classList.add("ctl_btn_active");
+        } else if (cv_person !== undefined && data[detect_type] == cv_person) {
+            FButtons[3].classList.add("ctl_btn_active");
         }
 
         if (data[detect_type] == cv_auto && cv_heartbeat_stop_flag == false) {
