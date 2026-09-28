@@ -5,6 +5,7 @@
     var PAGES = [
         { href: './', label: 'Control' },
         { href: './dashboard.html', label: 'Dashboard' },
+        { href: './telemetry.html', label: 'Telemetry' },
         { href: './joystick.html', label: 'Joystick' },
         { href: './gait.html', label: 'Gait' },
         { href: './settings.html', label: 'Settings' },

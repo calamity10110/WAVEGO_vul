@@ -41,10 +41,10 @@ import uuid
 import asyncio
 import time
 import logging
-import logging
 import cv_ctrl
 import os_info
 from settings_api import get_settings, validate_patch, apply_patch
+from collections import deque
 
 # Get system info
 si = os_info.SystemInfo()
@@ -551,6 +551,72 @@ def api_config():
                    note="speeds/name apply on next page load; video resolution after camera restart")
 
 
+# telemetry: bounded host-error ring + polled joint positions
+ERROR_RING = deque(maxlen=100)
+
+
+def note_error(source, msg, level='ERROR'):
+    ERROR_RING.appendleft({'t': round(time.time(), 3), 'source': source,
+                           'level': level, 'msg': str(msg)[:300]})
+
+
+class RingLogHandler(logging.Handler):
+    def emit(self, record):
+        if record.levelno >= logging.WARNING:
+            note_error(record.name, record.getMessage(), record.levelname)
+
+
+logging.getLogger().addHandler(RingLogHandler())
+
+from werkzeug.exceptions import HTTPException
+
+
+@app.errorhandler(HTTPException)
+def on_http_exception(e):
+    return jsonify(success=False, error=e.description), e.code
+
+
+@app.errorhandler(Exception)
+def on_exception(e):
+    note_error('flask', e)
+    return jsonify(success=False, error=str(e)), 500
+
+
+JOINTS = {'fb': None, 't': 0.0}
+
+
+def joint_poll_loop():
+    while True:
+        try:
+            base.base_json_ctrl({'T': 106})
+            deadline = time.time() + 0.5
+            while time.time() < deadline:
+                bd = base.base_data if isinstance(base.base_data, dict) else {}
+                if bd.get('T') == -106:
+                    JOINTS['fb'] = bd.get('fb')
+                    JOINTS['t'] = time.time()
+                    break
+            time.sleep(1.0)
+        except Exception as e:
+            note_error('joint_poll', e)
+            time.sleep(2.0)
+
+
+@app.route('/api/telemetry')
+def api_telemetry():
+    base_data = base.base_data if isinstance(base.base_data, dict) else {}
+    return jsonify(
+        joints=JOINTS,
+        battery=base_data.get('v'),
+        esp32_last=base_data,
+        rpi={'cpu_load': si.cpu_load, 'cpu_temp': si.cpu_temp,
+             'ram_usage': si.ram, 'wifi_rssi': si.wifi_rssi},
+        video_fps=cvf.video_fps,
+        cv={'mode': cvf.cv_mode, 'motion_lock': cvf.cv_movtion_lock},
+        errors=list(ERROR_RING)[:50],
+    )
+
+
 
 # Web socket
 @socketio.on('json', namespace='/json')
@@ -665,6 +731,10 @@ if __name__ == "__main__":
     # base data update
     base_update_thread = threading.Thread(target=base_data_loop, daemon=True)
     base_update_thread.start()
+
+    # joint position polling for the telemetry tab
+    joint_thread = threading.Thread(target=joint_poll_loop, daemon=True)
+    joint_thread.start()
 
     # run the main web app
     socketio.run(app, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)
