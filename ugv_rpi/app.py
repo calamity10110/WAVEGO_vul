@@ -43,12 +43,10 @@ import time
 import logging
 import logging
 import cv_ctrl
-# import audio_ctrl
 import os_info
 from settings_api import get_settings, validate_patch, apply_patch
 
 # Get system info
-UPLOAD_FOLDER = thisPath + '/sounds/others'
 si = os_info.SystemInfo()
 
 # Create a Flask app instance
@@ -124,12 +122,6 @@ cmd_feedback_actions = [f['code']['cv_none'], f['code']['cv_moti'],
 if 'cv_person' in f['code']:
     cmd_feedback_actions.append(f['code']['cv_person'])
 
-# cv info process
-def process_cv_info(cmd):
-    if cmd[f['fb']['detect_type']] != f['code']['cv_none']:
-        print(cmd[f['fb']['detect_type']])
-        pass
-
 # Function to generate video frames from the camera
 def generate_frames():
     while True:
@@ -149,7 +141,6 @@ def generate_frames():
 # Route to render the HTML template
 @app.route('/')
 def index():
-    # audio_ctrl.play_random_audio("connected", False)
     return render_template('index.html')
 
 @app.route('/config')
@@ -277,17 +268,6 @@ def cmdline_ctrl(args_string):
                 cvf.show_recv_info(True)
             else:
                 cvf.show_recv_info(False)
-
-    elif args[0] == 'audio':
-        if args[1] == '-s' or args[1] == '--say':
-            # audio_ctrl.play_speech_thread(' '.join(args[2:]))
-            pass
-        elif args[1] == '-v' or args[1] == '--volume':
-            # audio_ctrl.set_audio_volume(args[2])
-            pass
-        elif args[1] == '-p' or args[1] == '--play_file':
-            # audio_ctrl.play_file(args[2])
-            pass
 
     elif args[0] == 'send':
         if args[1] == '-a' or args[1] == '--add':
@@ -553,24 +533,6 @@ def api_vlm_stop():
     return jsonify(body), code
 
 
-@app.route('/getAudioFiles', methods=['GET'])
-def get_audio_files():
-    files = [f for f in os.listdir(UPLOAD_FOLDER) if os.path.isfile(os.path.join(UPLOAD_FOLDER, f)) and (f.endswith('.mp3') or f.endswith('.wav'))]
-    return jsonify(files)
-
-@app.route('/uploadAudio', methods=['POST'])
-def upload_audio():
-    return jsonify(success=False, error='audio playback is disabled on this build'), 501
-
-@app.route('/playAudio', methods=['POST'])
-def play_audio():
-    return jsonify(success=False, error='audio playback is disabled on this build'), 501
-
-@app.route('/stop_audio', methods=['POST'])
-def audio_stop():
-    return jsonify(success=False, error='audio playback is disabled on this build'), 501
-
-
 @app.route('/api/config', methods=['GET', 'POST'])
 def api_config():
     if request.method == 'GET':
@@ -685,9 +647,6 @@ def handle_socket_cmd(message):
 
 # Run the Flask app
 if __name__ == "__main__":
-    # play a audio file in /sounds/robot_started/
-    # audio_ctrl.play_random_audio("robot_started", False)
-
     # update the size of videos and pictures
     si.update_folder(thisPath)
 

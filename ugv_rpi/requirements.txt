@@ -47,8 +47,6 @@ fqdn==1.5.1
 fsspec==2023.10.0
 google-crc32c==1.5.0
 gpiozero==2.0
-gTTS==2.4.0
-gTTS-token==1.1.4
 h11==0.14.0
 html5lib==1.1
 idna==3.3
@@ -121,9 +119,7 @@ pybind11==2.11.1
 pycairo==1.20.1
 pycparser==2.21
 pycups==2.0.1
-pydub==0.25.1
 pyee==11.1.0
-pygame==2.1.2
 Pygments==2.14.0
 PyGObject==3.42.2
 pyinotify==0.9.6
@@ -144,7 +140,6 @@ python-engineio==4.8.0
 python-json-logger==2.0.7
 python-prctl==1.8.1
 python-socketio==5.11.0
-pyttsx3==2.7
 pytz==2022.7.1
 pyudev==0.24.0
 PyYAML==6.0.1

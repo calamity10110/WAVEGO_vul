@@ -30,7 +30,7 @@ The app auto-starts on boot (`app.py`). Manual control:
 ### Access
 
 - **Web UI**: `http://<robot-ip>:5000` — shared tab bar across all pages: Control (movement pad, CV mode buttons incl. FOLLOW, JSON console), Dashboard (telemetry + d-pad), Joystick (dual-stick), Gait (ESP32 live tuning), Settings (camera/movement/identity), Photos, Videos
-- **Audio upload/playback endpoints are stubbed (501)** — playback is disabled on this build
+- **Audio upload/playback removed** — the unused pygame/pyttsx3 stack was dead code and its endpoints returned fake success
 - **JupyterLab tutorials**: `http://<robot-ip>:8888`
 - **Hotspot fallback**: if no known WiFi is found, AccessPopup opens `AccessPopup` / `1234567890` with the UI at `192.168.50.5:5000`
 - The robot IP is shown on the OLED (line `W:`) and announced on the video overlay at boot
@@ -72,7 +72,6 @@ Everything else the firmware understands (47 commands — missions, gait tuning,
 | `/video_feed` | GET | MJPEG fallback stream |
 | `/send_command` | POST | send a cmdline string to `cmdline_ctrl` |
 | `/get_photo_names`, `/delete_photo`, `/get_video_names`, `/delete_video`, `/videos/<f>` | GET/POST | media galleries |
-| `/getAudioFiles`, `/uploadAudio`, `/playAudio`, `/stop_audio` | GET/POST | audio library |
 
 ### Control bypass API (external applications)
 
