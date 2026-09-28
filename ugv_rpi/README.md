@@ -29,7 +29,8 @@ The app auto-starts on boot (`app.py`). Manual control:
 
 ### Access
 
-- **Web UI**: `http://<robot-ip>:5000` — movement pad, StayLow / HandShake / Jump / STEADY buttons, RGB presets, JSON console, CV mode buttons, photo/video galleries
+- **Web UI**: `http://<robot-ip>:5000` — shared tab bar across all pages: Control (movement pad, CV mode buttons incl. FOLLOW, JSON console), Dashboard (telemetry + d-pad), Joystick (dual-stick), Gait (ESP32 live tuning), Settings (camera/movement/identity), Photos, Videos
+- **Audio upload/playback endpoints are stubbed (501)** — playback is disabled on this build
 - **JupyterLab tutorials**: `http://<robot-ip>:8888`
 - **Hotspot fallback**: if no known WiFi is found, AccessPopup opens `AccessPopup` / `1234567890` with the UI at `192.168.50.5:5000`
 - The robot IP is shown on the OLED (line `W:`) and announced on the video overlay at boot
@@ -83,6 +84,7 @@ For programs on or off the Raspberry Pi that need to drive the robot or read sen
 | `/api/cv` | GET/POST | switch/query CV modes + motion lock by name — `GET` returns `{"mode":"person","mode_code":10310,"motion_lock":false}`; `POST {"mode":"..."}` and/or `{"motion_lock":bool}`. Valid mode names: `none, motion, face, objects, color, hand, auto, mp_face, mp_pose, person` |
 | `/api/vlm` | GET/POST | proxy to the VLM goal service (`vlm_ctrl`, port 5001) — `GET` returns session status; `POST {"goal":"..."}` or `{"goals":[...]}` (sequential = autonomous mode); 503 when the service is not running |
 | `/api/vlm/stop` | POST | stop robot motion + end the current VLM session |
+| `/api/config` | GET/POST | whitelisted runtime settings — `GET` returns flat `key: value` (video res/quality, movement speeds/rates, robot name); `POST` a partial patch (e.g. `{"video.default_quality": 55}`) to validate, apply, and persist to `config.yaml`. Unknown keys / out-of-range values are rejected with 400 |
 | `/api/status` | GET | sensor/status snapshot: ESP32 battery voltage + last raw feedback, RPi CPU/temp/RAM/RSSI, video FPS + stream URLs, CV mode |
 | `/video_feed` | GET | MJPEG camera stream (consume directly from any client) |
 | `/offer` | POST | WebRTC signaling for the camera |

@@ -3,10 +3,13 @@
     <title>WAVEGO Pro — Dashboard</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <meta name="theme-color" content="#101418">
     <script src="./socket.io.js"></script>
     <script src="./js-yaml.min.js"></script>
+    <script src="./nav.js"></script>
     <style>
         :root {
+            color-scheme: dark;
             --bg: #101418; --panel: #1a2129; --panel2: #212b36;
             --line: #2d3a47; --txt: #d8e1ea; --dim: #8fa1b3;
             --acc: #4fc3f7; --ok: #66bb6a; --warn: #ffa726; --bad: #ef5350;
@@ -77,9 +80,6 @@
     <div class="conn">
         <span><span id="dotCtrl" class="dot"></span>telemetry</span>
         <span><span id="dotJson" class="dot"></span>esp32 link</span>
-        <a href="./">&laquo; main UI</a>
-        <a href="./joystick.html">joystick</a>
-        <a href="./gait.html">gait</a>
     </div>
 </header>
 

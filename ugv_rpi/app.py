@@ -35,7 +35,6 @@ base.base_oled(3, "Starting...")
 # Import necessary modules
 from flask import Flask, render_template, Response, request, jsonify, redirect, url_for, send_from_directory, send_file
 from flask_socketio import SocketIO, emit
-from werkzeug.utils import secure_filename
 from aiortc import RTCPeerConnection, RTCSessionDescription
 import json
 import uuid
@@ -46,6 +45,7 @@ import logging
 import cv_ctrl
 # import audio_ctrl
 import os_info
+from settings_api import get_settings, validate_patch, apply_patch
 
 # Get system info
 UPLOAD_FOLDER = thisPath + '/sounds/others'
@@ -439,7 +439,8 @@ def handle_command():
         cmdline_ctrl(command)
     except Exception as e:
         print(f"[app.handle_command] error: {e}")
-    return jsonify({"status": "success", "message": "Command received"})
+        return jsonify(success=False, error=str(e)), 500
+    return jsonify(success=True)
 
 # control bypass API: raw JSON passthrough for external applications
 @app.route('/api/cmd', methods=['POST'])
@@ -559,27 +560,33 @@ def get_audio_files():
 
 @app.route('/uploadAudio', methods=['POST'])
 def upload_audio():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file part'})
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No selected file'})
-    if file:
-        filename = secure_filename(file.filename)
-        file.save(os.path.join(UPLOAD_FOLDER, filename))
-        return jsonify({'success': 'File uploaded successfully'})
+    return jsonify(success=False, error='audio playback is disabled on this build'), 501
 
 @app.route('/playAudio', methods=['POST'])
 def play_audio():
-    audio_file = request.form['audio_file']
-    print(thisPath + '/sounds/others/' + audio_file)
-    # audio_ctrl.play_audio_thread(thisPath + '/sounds/others/' + audio_file)
-    return jsonify({'success': 'Audio is playing'})
+    return jsonify(success=False, error='audio playback is disabled on this build'), 501
 
 @app.route('/stop_audio', methods=['POST'])
 def audio_stop():
-    # audio_ctrl.stop()
-    return jsonify({'success': 'Audio stop'})
+    return jsonify(success=False, error='audio playback is disabled on this build'), 501
+
+
+@app.route('/api/config', methods=['GET', 'POST'])
+def api_config():
+    if request.method == 'GET':
+        return jsonify(success=True, settings=get_settings(f))
+    data = request.get_json(silent=True)
+    clean, errors = validate_patch(data if isinstance(data, dict) else {})
+    if errors:
+        return jsonify(success=False, error='; '.join(errors)), 400
+    apply_patch(f, clean)
+    try:
+        with open(thisPath + '/config.yaml', "w") as yaml_file:
+            yaml.dump(f, yaml_file)
+    except Exception as e:
+        return jsonify(success=False, error=f"persist failed: {e}"), 500
+    return jsonify(success=True, applied=clean,
+                   note="speeds/name apply on next page load; video resolution after camera restart")
 
 
 

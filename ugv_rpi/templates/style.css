@@ -13,6 +13,11 @@
     font-weight: bold;
     font-style: normal;
 }
+:root{color-scheme:dark;}
+:focus-visible{outline:2px solid #4FF5C0;outline-offset:2px;}
+@media (prefers-reduced-motion: reduce){
+    *,*::before,*::after{transition-duration:0.01ms !important;animation-duration:0.01ms !important;}
+}
 a{color: #4FF5C0;}
 ul{
     margin: 0;
@@ -162,7 +167,7 @@ main {
     -webkit-transform: translate(48px,0); 
     display: flex;
     align-items: center;
-    transition: all 1s ease-out;
+    transition: transform 1s ease-out;
 }
 .tilt .tilt_pointer{
     width: 12px;
@@ -349,7 +354,7 @@ main {
 .ctrl_base_s{
     width: 80px;
     height: 80px;
-    transition: all 0.1s ease-out;
+    transition: transform 0.1s ease-out;
     opacity: 0.5;
     /* border: 2px solid rgba(119, 119, 119, 0.7); */
     border: 2px solid rgba(79, 245, 192, 1);
@@ -357,7 +362,7 @@ main {
 .ctrl_stick_s{
     width: 50px;
     height: 50px;
-    transition: all 0.1s ease-out;
+    transition: transform 0.1s ease-out;
     opacity: 0.5;
     /* background-color: rgba(119, 119, 119, 0.7); */
     background-color: rgba(79, 245, 192, 0.7);
@@ -365,7 +370,7 @@ main {
 .ctrl_base_l{
     width: 120px;
     height: 120px;
-    transition: all 0.1s ease-out;
+    transition: transform 0.1s ease-out;
     margin: 0 10% 10% 0;
     border: 2px solid rgba(172, 172, 172, 0.8);
     z-index: 9;
@@ -373,7 +378,7 @@ main {
 .ctrl_stick_l{
     width: 70px;
     height: 70px;
-    transition: all 0.1s ease-out;
+    transition: transform 0.1s ease-out;
     background-color: rgba(172, 172, 172, 0.8);
     z-index: 9;
 }
@@ -488,7 +493,6 @@ ul.video-list li a:hover div .normal_btn_play::before{background-image: url('./i
 }
 .ctl9_base{
     background-image: linear-gradient( rgba(40, 41, 46, 1), rgba(40, 41, 46, 0.3));
-    box-shadow: 1 10px 10px rgba(0,0,0,0.15);
     border-radius: 40px;
     box-shadow: 0 10px 10px rgba(0,0,0,0.15);
 }

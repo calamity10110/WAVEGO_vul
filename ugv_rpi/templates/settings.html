@@ -1,0 +1,179 @@
+<html lang="en-US">
+<head>
+    <title>WAVEGO Pro — Settings</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <meta name="theme-color" content="#101418">
+    <script src="./nav.js"></script>
+    <style>
+        :root {
+            color-scheme: dark;
+            --bg: #101418; --panel: #1a2129; --panel2: #212b36; --line: #2d3a47;
+            --txt: #d8e1ea; --dim: #8fa1b3; --acc: #4fc3f7; --ok: #66bb6a; --bad: #ef5350;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: var(--bg); color: var(--txt); font-family: "Segoe UI", Roboto, Arial, sans-serif; }
+        main { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; padding: 14px; max-width: 1200px; margin: 0 auto; }
+        section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+        section h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--dim); margin-bottom: 12px; }
+        button { background: var(--panel2); color: var(--txt); border: 1px solid var(--line); border-radius: 7px; padding: 9px 14px; font-size: 14px; cursor: pointer; }
+        button:hover { border-color: var(--acc); }
+        button:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+        button.primary { background: #0e3a52; border-color: var(--acc); color: #bfe8ff; font-weight: 600; }
+        .param { margin-bottom: 12px; }
+        .param label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
+        .param label .val { color: var(--acc); font-family: Consolas, monospace; }
+        .param input[type=range] { width: 100%; }
+        .param input[type=number], .param input[type=text] {
+            width: 100%; background: #0b0f13; border: 1px solid var(--line); border-radius: 7px;
+            color: var(--txt); padding: 8px 10px; font-family: Consolas, monospace; font-size: 13px;
+        }
+        .row { display: flex; gap: 8px; align-items: center; }
+        .note { font-size: 11px; color: var(--dim); margin-top: 8px; line-height: 1.5; }
+        .toast {
+            position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+            background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
+            padding: 10px 18px; font-size: 13px; opacity: 0; transition: opacity 0.3s ease-out;
+            pointer-events: none; z-index: 50;
+        }
+        .toast.show { opacity: 1; }
+        .toast.err { border-color: var(--bad); color: #ffb4ae; }
+    </style>
+</head>
+<body>
+<main>
+    <section>
+        <h2>Camera</h2>
+        <div class="param">
+            <label for="s_res_w">frame width (px)</label>
+            <input type="number" id="s_res_w" min="320" max="1920" step="160">
+        </div>
+        <div class="param">
+            <label for="s_res_h">frame height (px)</label>
+            <input type="number" id="s_res_h" min="240" max="1080" step="120">
+        </div>
+        <div class="param">
+            <label for="s_quality">JPEG quality <span class="val" id="v_quality">--</span></label>
+            <input type="range" id="s_quality" min="1" max="100" step="1">
+        </div>
+        <div class="row"><button id="saveVideo" class="primary">Save Camera</button></div>
+        <p class="note">Quality applies to new frames immediately; resolution applies after the camera app restarts.</p>
+    </section>
+
+    <section>
+        <h2>Movement</h2>
+        <div class="param">
+            <label for="s_max_speed">max speed (m/s)</label>
+            <input type="number" id="s_max_speed" min="0.1" max="2" step="0.1">
+        </div>
+        <div class="param">
+            <label for="s_slow_speed">slow speed (m/s)</label>
+            <input type="number" id="s_slow_speed" min="0" max="1" step="0.1">
+        </div>
+        <div class="param">
+            <label for="s_min_rate">low rate <span class="val" id="v_min_rate">--</span></label>
+            <input type="range" id="s_min_rate" min="0" max="1" step="0.05">
+        </div>
+        <div class="param">
+            <label for="s_mid_rate">mid rate <span class="val" id="v_mid_rate">--</span></label>
+            <input type="range" id="s_mid_rate" min="0" max="1" step="0.05">
+        </div>
+        <div class="param">
+            <label for="s_max_rate">high rate <span class="val" id="v_max_rate">--</span></label>
+            <input type="range" id="s_max_rate" min="0" max="1" step="0.05">
+        </div>
+        <div class="row"><button id="saveMove" class="primary">Save Movement</button></div>
+        <p class="note">Rates scale the max speed per speed button; values apply on next page load.</p>
+    </section>
+
+    <section>
+        <h2>Identity</h2>
+        <div class="param">
+            <label for="s_name">robot name</label>
+            <input type="text" id="s_name" maxlength="32" spellcheck="false">
+        </div>
+        <div class="row"><button id="saveName" class="primary">Save Name</button></div>
+        <p class="note">Shown in page titles and the ESP32 OLED boot line; applies on next page load.</p>
+    </section>
+</main>
+<div class="toast" id="toast" aria-live="polite"></div>
+
+<script>
+(function () {
+    var FIELDS = {
+        'video.default_res_w': 's_res_w',
+        'video.default_res_h': 's_res_h',
+        'video.default_quality': 's_quality',
+        'args_config.max_speed': 's_max_speed',
+        'args_config.slow_speed': 's_slow_speed',
+        'args_config.min_rate': 's_min_rate',
+        'args_config.mid_rate': 's_mid_rate',
+        'args_config.max_rate': 's_max_rate',
+        'base_config.robot_name': 's_name'
+    };
+    var RANGES = ['s_quality', 's_min_rate', 's_mid_rate', 's_max_rate'];
+
+    function toast(msg, err) {
+        var el = document.getElementById('toast');
+        el.textContent = msg;
+        el.className = 'toast show' + (err ? ' err' : '');
+        clearTimeout(el._t);
+        el._t = setTimeout(function () { el.className = 'toast'; }, 2600);
+    }
+
+    function bindRange(id) {
+        var el = document.getElementById(id);
+        var val = document.getElementById('v_' + id.slice(2));
+        if (!val) { return; }
+        el.addEventListener('input', function () { val.textContent = el.value; });
+    }
+    Object.keys(FIELDS).forEach(function (k) {
+        if (RANGES.indexOf(FIELDS[k]) !== -1) { bindRange(FIELDS[k]); }
+    });
+
+    fetch('/api/config').then(function (r) { return r.json(); }).then(function (d) {
+        var s = d.settings || {};
+        Object.keys(FIELDS).forEach(function (k) {
+            var el = document.getElementById(FIELDS[k]);
+            if (el && s[k] !== null && s[k] !== undefined) { el.value = s[k]; }
+        });
+        RANGES.forEach(function (id) {
+            var val = document.getElementById('v_' + id.slice(2));
+            if (val) { val.textContent = document.getElementById(id).value; }
+        });
+    }).catch(function () { toast('could not load settings', true); });
+
+    function save(patch) {
+        fetch('/api/config', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(patch)
+        }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+          .then(function (r) {
+              if (r.ok) { toast('saved'); }
+              else { toast(r.d.error || 'save failed', true); }
+          }).catch(function () { toast('save failed', true); });
+    }
+
+    function patchFrom(ids) {
+        var patch = {};
+        ids.forEach(function (id) {
+            Object.keys(FIELDS).forEach(function (k) {
+                if (FIELDS[k] === id) { patch[k] = document.getElementById(id).value; }
+            });
+        });
+        return patch;
+    }
+
+    document.getElementById('saveVideo').addEventListener('click', function () {
+        save(patchFrom(['s_res_w', 's_res_h', 's_quality']));
+    });
+    document.getElementById('saveMove').addEventListener('click', function () {
+        save(patchFrom(['s_max_speed', 's_slow_speed', 's_min_rate', 's_mid_rate', 's_max_rate']));
+    });
+    document.getElementById('saveName').addEventListener('click', function () {
+        save(patchFrom(['s_name']));
+    });
+})();
+</script>
+</body>
+</html>

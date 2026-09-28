@@ -1,8 +1,9 @@
 <html lang="en-US">
   <head>
-    <title>WAVESHARE ROBOT</title>
+    <title>WAVEGO Pro</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <meta name="theme-color" content="#1E1E20">
     <script src="./jquery-3.7.1.min.js"></script>
     <script src="./js-yaml.min.js"></script>
     <script src="./socket.io.js"></script>
@@ -11,11 +12,6 @@
     </style>
   </head>
 <body>
-    <div style="position:fixed;top:8px;right:8px;z-index:99;display:flex;flex-direction:column;gap:4px;font-size:13px;">
-        <a href="./dashboard.html" style="background:#1a2129;color:#4fc3f7;border:1px solid #2d3a47;border-radius:6px;padding:6px 12px;text-decoration:none;">Dashboard &#8811;</a>
-        <a href="./joystick.html" style="background:#1a2129;color:#4fc3f7;border:1px solid #2d3a47;border-radius:6px;padding:6px 12px;text-decoration:none;">Joystick &#8811;</a>
-        <a href="./gait.html" style="background:#1a2129;color:#4fc3f7;border:1px solid #2d3a47;border-radius:6px;padding:6px 12px;text-decoration:none;">Gait Settings &#8811;</a>
-    </div>
     <main>
         <div class="box1">
             <section class="section_video box_outline">
@@ -88,15 +84,15 @@
                             </div>
                         </div>
                     </div>
-                    <div class="video"><img src="{{ url_for('video_feed') }}" /></div>
+                    <div class="video"><img src="{{ url_for('video_feed') }}" width="640" height="480" alt="live camera feed"></div>
                     <!-- <div class="video"><video id="remoteVideo" autoplay></video></div> -->
                 </div>
                 <div class="video_ctrl">
                     <div>
                         <div class="record"><div><button id="record-btn" class="normal_btn video_btn_record btn_ico">Record</button></div></div>
-                        <div class="capture"><div><button class="normal_btn video_btn_capture" onclick="captureAndUpdate()"></button></div></div>
+                        <div class="capture"><div><button class="normal_btn video_btn_capture" onclick="captureAndUpdate()" aria-label="capture photo"></button></div></div>
                         <div class="views">
-                            <div><button class="normal_btn normal_btn_size video_btn_zoom btn_ico" id="zoom_btn"></button></div>
+                            <div><button class="normal_btn normal_btn_size video_btn_zoom btn_ico" id="zoom_btn" aria-label="zoom"></button></div>
                             <div class="video_btn_px_select">
                                 <button id="video_pixel_btn" class="normal_btn normal_btn_size video_btn_px">WebRTC</button>
                                 <ul id="video_pixel_btn_list">
@@ -124,7 +120,7 @@
                             </div>
                         </div>
                         <div class="ctl9 ctl9_base">
-                            <ul>
+                            <ul aria-label="movement direction pad; keyboard WASD and arrow keys work as an alternative">
                                 <li class="ctl9_base_btn" 
                                 onmousedown="cmdJsonCmd({'T':cmd_movition_ctrl,'L':slow_speed,'R':max_speed});" 
                                 ontouchstart="cmdJsonCmd({'T':cmd_movition_ctrl,'L':slow_speed,'R':max_speed});" 
@@ -179,22 +175,9 @@
                     </div>
                 </div>
                 <div>
-                    <div class="audio_input">
-                        <div class="audio-files">
-                            <div id="audioFiles" class="audio_list">
-                                <div id="audioFilesDrag" class="audio-drop">Drop audio files here!</div>
-                                <!-- <ol>
-                                    <li>1<span class="audioplay"></span><span>Drop audio files here.mp3</span></li>
-                                </ol>-->
-                            </div>
-                            <div style="visibility: hidden;" id="stopButton" class="pause"><div></div></div>
-                        </div>
-                    </div>
-                </div>
-                <div>
                     <div class="code_input">
                         <div>
-                            <textarea type="text" id="commandInput" placeholder="Enter Command"></textarea>
+                            <textarea type="text" id="commandInput" placeholder='{"T":111,"FB":1,"LR":0}' aria-label="JSON command input" spellcheck="false"></textarea>
                             <div><button id="sendButton" class="normal_btn normal_btn_size normal_btn_w">Send</button></div>
                         </div>
                     </div>
@@ -223,7 +206,7 @@
                             <h2 class="sc_title feed_ct_tt">Simple Detection Type</h2>
                             <div id="d_type_btn">
                                 <div><button onclick="cmdSend(cv_none,0,0);" class="ctl_btn ctl_btn_active">None</button></div>
-                                <div><button onclick="cmdSend(cv_moti,1,0);" class="ctl_btn ctl_btn_mov btn_ico">Movtion</button></div>
+                                <div><button onclick="cmdSend(cv_moti,1,0);" class="ctl_btn ctl_btn_mov btn_ico">Motion</button></div>
                                 <div><button onclick="cmdSend(cv_face,2,0);" class="ctl_btn ctl_btn_faces btn_ico">Faces</button></div>
                             </div>
                         </div>
@@ -315,5 +298,6 @@
     <!-- <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.0/jquery.min.js"></script> -->
     <script src="./control.js"></script>
     <script src="./main.js"></script>
+    <script src="./nav.js"></script>
 </body>
 </html>

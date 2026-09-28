@@ -2,11 +2,14 @@
 <head>
     <title>WAVEGO Pro — Joystick Control</title>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <meta name="theme-color" content="#101418">
     <script src="./socket.io.js"></script>
     <script src="./js-yaml.min.js"></script>
+    <script src="./nav.js"></script>
     <style>
         :root {
+            color-scheme: dark;
             --bg: #101418; --panel: #1a2129; --panel2: #212b36; --line: #2d3a47;
             --txt: #d8e1ea; --dim: #8fa1b3; --acc: #4fc3f7; --ok: #66bb6a; --bad: #ef5350;
         }
@@ -58,9 +61,6 @@
     <h1>Joystick Control</h1>
     <span style="font-size:12px;color:var(--dim)">left: move (T:1) &middot; right: body pose (T:133)</span>
     <span class="conn"><span id="dotJson" class="dot"></span>esp32 link</span>
-    <a href="./">&laquo; main UI</a>
-    <a href="./dashboard.html">dashboard</a>
-    <a href="./gait.html">gait</a>
 </header>
 
 <main>
@@ -95,7 +95,7 @@
             <button id="btnJump">JUMP</button>
             <button id="btnStopAll" class="danger">STOP ALL</button>
         </div>
-        <p class="note">JUMP (T:112 func 3) can fire while moving — the gait resumes when the jump completes. Pose stick maps X to yaw (&plusmn;30&deg;) and Y to pitch (&plusmn;17.5&deg;); release to re-center.</p>
+        <p class="note">JUMP (T:112 func 3) can fire while moving — the gait resumes when the jump completes. Pose stick: full deflection = yaw &plusmn;30&deg; (X) and pitch &plusmn;17.5&deg; (Y); release to re-center.</p>
         <div class="log" id="log"></div>
     </section>
 </main>
@@ -189,7 +189,9 @@
         var r = Math.max(-1, Math.min(1, fwd - turn));
         moveCmd.L = +(l * maxSpeed).toFixed(3);
         moveCmd.R = +(r * maxSpeed).toFixed(3);
-        document.getElementById('moveVal').textContent = 'L ' + moveCmd.L.toFixed(2) + ' \u00a0 R ' + moveCmd.R.toFixed(2);
+        var sentL = +(moveCmd.L * rate).toFixed(3);
+        var sentR = +(moveCmd.R * rate).toFixed(3);
+        document.getElementById('moveVal').textContent = 'L ' + sentL.toFixed(2) + ' \u00a0 R ' + sentR.toFixed(2);
         var key = moveCmd.L + ',' + moveCmd.R;
         if (send && key !== lastMoveKey) {
             lastMoveKey = key;
@@ -216,10 +218,12 @@
     makeStick(document.getElementById('stickPose'),
         function (p) {
             var now = Date.now();
-            document.getElementById('poseVal').textContent = 'X ' + Math.round(p.x * 180) + ' \u00a0 Y ' + Math.round(-p.y * 30);
+            var yaw = Math.round(p.x * 30);
+            var pitch = Math.round(-p.y * 17.5);
+            document.getElementById('poseVal').textContent = 'X ' + yaw + ' \u00a0 Y ' + pitch;
             if (now - poseSentAt > 150) {
                 poseSentAt = now;
-                sendEsp({ T: 133, X: Math.round(p.x * 180), Y: Math.round(-p.y * 30) });
+                sendEsp({ T: 133, X: yaw, Y: pitch });
             }
         },
         function () {
