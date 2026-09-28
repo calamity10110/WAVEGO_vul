@@ -6,8 +6,6 @@ loaded config dict in place so the caller can persist it with yaml.dump.
 Pure module — no Flask imports, unit-testable off-robot.
 """
 
-import re
-
 _INT = "int"
 _FLOAT = "float"
 _STR = "str"
@@ -23,9 +21,6 @@ SPEC = {
     "args_config.max_rate":   (_FLOAT, 0.0,  1.0),
     "base_config.robot_name": (_STR,     1,   32),
 }
-_KEY_RX = re.compile(r"^[a-z_]+\.[a-z_]+$")
-
-
 def get_settings(config):
     out = {}
     for key in SPEC:

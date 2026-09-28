@@ -19,6 +19,7 @@ import time
 
 import yaml
 
+from .capture import ensure_media_dir
 from .coherence import coherent
 from .contracts import derive_command, validate_decision
 from .engines import FastEngine
@@ -61,7 +62,7 @@ def make_frame_source(cfg, static_frame):
     if static_frame:
         with open(static_frame, "rb") as fh:
             data = fh.read()
-        path = os.path.join(ensure_media(), "frame_latest.jpg")
+        path = ensure_media_dir(HERE) + os.sep + "frame_latest.jpg"
         with open(path, "wb") as fh:
             fh.write(data)
 
@@ -79,12 +80,6 @@ def make_frame_source(cfg, static_frame):
         return grab_frame(url, out, resize_px=cap.get("resize_px", 448),
                           jpeg_quality=cap.get("jpeg_quality", 60))
     return source
-
-
-def ensure_media():
-    d = os.path.join(HERE, "media_frames")
-    os.makedirs(d, exist_ok=True)
-    return d
 
 
 def run_cycle(engine, source, goal, verifier):

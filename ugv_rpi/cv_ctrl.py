@@ -1011,9 +1011,6 @@ class OpencvFuncs():
         self.info_update_time = time.time()
         self.show_info_flag = True
 
-    def commandline_ctrl(self, args_str):
-        return
-
     def show_recv_info(self, input_cmd):
         if input_cmd == True:
             self.show_base_info_flag = True

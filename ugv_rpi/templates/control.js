@@ -205,17 +205,6 @@ function updateVideoList() {
 updateVideoList();
 
 
-//video pixel
-var listItems = $("#video_pixel_btn_list").children("li");
-listItems.on("click", function () {
-    var innertext = $(this).text();
-    $("#video_pixel_btn").text(innertext);
-    $("#video_pixel_btn_list").css("display", "none");
-    setTimeout(function () {
-        $("#video_pixel_btn_list").removeAttr("style");
-    }, 10);  
-});
-
 //record function
 var isRecording = false;
 var originalText = "Record";
@@ -517,30 +506,6 @@ function joyStickCtrl(inputX, inputY) {
 }
 
 
-function cmdFill(rawInfo, fillInfo) {
-    document.getElementById(rawInfo).value = document.getElementById(fillInfo).innerHTML;
-}
-
-function jsonSendFb() {
-    var xhttp = new XMLHttpRequest();
-    xhttp.onreadystatechange = function() {
-        if (this.readyState == 4 && this.status == 200) {
-          document.getElementById("fbInfo").innerHTML =
-          this.responseText;
-        }
-    };
-    xhttp.open("GET", "jsfb", true);
-    xhttp.send();
-}
-function jsonSend() {
-    var xhttp = new XMLHttpRequest();
-    xhttp.open("GET", "js?json="+document.getElementById('jsonData').value, true);
-    xhttp.send();
-    jsonSendFb();
-}
-
-
-//remove buttons class
 function removeButtonsClass(buttons) {
     for (var i = 0; i < buttons.length; i++) {
         buttons[i].classList.remove("ctl_btn_active");

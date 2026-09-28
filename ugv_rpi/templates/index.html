@@ -85,22 +85,14 @@
                         </div>
                     </div>
                     <div class="video"><img src="{{ url_for('video_feed') }}" width="640" height="480" alt="live camera feed"></div>
-                    <!-- <div class="video"><video id="remoteVideo" autoplay></video></div> -->
-                </div>
+                        </div>
                 <div class="video_ctrl">
                     <div>
                         <div class="record"><div><button id="record-btn" class="normal_btn video_btn_record btn_ico">Record</button></div></div>
                         <div class="capture"><div><button class="normal_btn video_btn_capture" onclick="captureAndUpdate()" aria-label="capture photo"></button></div></div>
                         <div class="views">
                             <div><button class="normal_btn normal_btn_size video_btn_zoom btn_ico" id="zoom_btn" aria-label="zoom"></button></div>
-                            <div class="video_btn_px_select">
-                                <button id="video_pixel_btn" class="normal_btn normal_btn_size video_btn_px">WebRTC</button>
-                                <ul id="video_pixel_btn_list">
-                                    <!-- <li class="normal_btn" onclick="cmdSend(max_res,2,0);">960P</li>
-                                    <li class="normal_btn" onclick="cmdSend(mid_res,1,0);">480P</li>
-                                    <li class="normal_btn" onclick="cmdSend(min_res,0,0);">240P</li> -->
-                                </ul>
-                            </div>
+                            
                         </div>
                     </div>
                 </div>
@@ -223,7 +215,6 @@
                             <div id="adv_cv_ctrl_btn">
                                 <div><button onclick="cmdSend(mc_lock,0,0);" class="ctl_btn">LOCK</button></div>
                                 <div><button onclick="cmdSend(mc_unlo,0,0);" class="ctl_btn">UNLOCK</button></div>
-                                <!-- <div><button onclick="cmdSend(cv_auto,0,0);" class="ctl_btn">AUTODRIVE</button></div> -->
                             </div>
                         </div>
                         <div>  
@@ -295,7 +286,6 @@
         <div style="background-image: url('./img/grey/movtion.svg');"></div>
         <div style="background-image: url('./img/grey/delete.svg');"></div>
     </footer>
-    <!-- <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.0/jquery.min.js"></script> -->
     <script src="./control.js"></script>
     <script src="./main.js"></script>
     <script src="./nav.js"></script>

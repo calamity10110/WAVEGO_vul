@@ -468,21 +468,6 @@ ul.video-list li a:hover div .normal_btn_play::before{background-image: url('./i
     display: flex;
     justify-content: space-between;
 }
-.video_btn_px_select{user-select: none;}
-.video_btn_px_select ul{
-    position: absolute;
-    display: none;
-    padding: 5px 0;
-}
-.video_btn_px_select ul li{
-    display: block;
-    width: 64px;
-    height: 40px;
-    line-height: 40px;
-    margin-bottom: 2px;
-    text-align: center;
-}
-.video_btn_px_select:hover ul{display: block;}
 .controller{
     width: 210px;
     margin: auto;
