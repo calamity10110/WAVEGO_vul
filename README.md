@@ -25,6 +25,12 @@ The upper computer communicates with the lower computer (the robot's driver base
 - Shortcut key control
 - Photo taking
 - Video Recording
+- Person following (onboard MobileNet-SSD detector → discrete gait control with watchdog)
+- Voice assistant (persistent Moonshine ONNX ASR + phrase grammar → robot commands)
+- VLM goal control (onboard Intern-Decision decision engine, software-verified goal sessions)
+- Telemetry tab (realtime joint positions, battery, host sensors, host/client error rings)
+- Control bypass API (`/api/cmd`, `/api/status`, `/api/cv`, `/api/config`, `/api/telemetry`, `/api/vlm`)
+- Unified tabbed web UI with runtime Settings page
 
 ## Contents
 - [Robot Schematic](#robot-schematic)
@@ -40,6 +46,8 @@ The upper computer communicates with the lower computer (the robot's driver base
 |---|---|
 | `wavego_pro_platformio/` | ESP32 lower-computer firmware (PlatformIO, Arduino framework). Gait engine, IK, servo bus, OLED, RGB, missions, web UI — see [`wavego_pro_platformio/README.md`](./wavego_pro_platformio/README.md) |
 | `ugv_rpi/` | Raspberry Pi upper-computer app (Flask + WebRTC + OpenCV/MediaPipe) — see [`ugv_rpi/README.md`](./ugv_rpi/README.md) |
+| `ugv_rpi/voice/` | Persistent voice assistant (Moonshine ONNX ASR + phrase grammar) — installer: `ugv_rpi/install_voice.sh` |
+| `ugv_rpi/vlm_ctrl/` | VLM goal control: onboard Intern-Decision engine, verification stack, latency benchmark — installer: `ugv_rpi/install_vlm.sh` |
 | `wavego_pro_instruction_table.xlsx` / `.json` | Complete JSON command reference: 47 commands, feedback formats, unused/dead code audit |
 
 ## Robot Schematic
@@ -252,6 +260,17 @@ Wire it into `main.cpp`:
         else if (jsonCmdInput["func"] == 6) { bodyCtrl.functionActionA(); }  // new slot
 
 Then trigger it with `{"T":112,"func":6}`. Build and flash with PlatformIO (`pio run -t upload` from `wavego_pro_platformio/WAVEGO_Pro_PlatformIO/`, mainboard connected via Type-C, RPi UART disconnected). Background reading: [WAVEGO Custom Action Development Tutorial](https://www.waveshare.com/wiki/WAVEGO_Custom_Action_Development_Tutorial) (uses the older WAVEGO naming `GoalPosAll()`/`GoalPWM[]`; in this Pro firmware the equivalents are `allJointAngle(GoalAngle)`/`GoalAngle[]`).
+
+## Onboard Services & API
+
+| Service | Start | Surface |
+|---|---|---|
+| Main app (`app.py`) | cron `@reboot`, port 5000 | tabbed Web UI (Control / Dashboard / Telemetry / Joystick / Gait / Settings / Photos / Videos), HTTP API, sole UART owner |
+| Voice assistant | `ugv_rpi/install_voice.sh` → `wavego-voice.service` | phrase grammar → `/api/cmd`, `/api/cv`, `/api/vlm` |
+| VLM goal control | `ugv_rpi/install_vlm.sh` → `wavego-vlm.service` | goal sessions → software-verified gait commands |
+
+Full HTTP API reference (bypass API table): [`ugv_rpi/README.md`](ugv_rpi/README.md).
+Jupyter tutorials run at `:8888` (`tutorial_en/`, `tutorial_cn/`) — notebooks **30–31** cover the WAVEGO Pro HTTP API and realtime telemetry; notebooks **10, 11, 21** carry WAVEGO Pro notices (removed audio stack / unsupported line-following).
 
 ## Camera Installation and Usage
 The RPi app auto-detects cameras at startup in this order: **USB → CSI → OAK (depthai)**.

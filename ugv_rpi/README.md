@@ -192,6 +192,7 @@ ugv_rpi/
 ├── app.py               # entry point: Flask+SocketIO app, BaseController init (Pi4/Pi5
 │                        #   serial device autodetect), routes, websocket handlers,
 │                        #   cmd_actions dispatch table, feedback/OLED update loops
+├── settings_api.py      # /api/config whitelist: dotted keys -> type/range validation (pure)
 ├── base_ctrl.py         # BaseController: threaded serial JSON queue, ReadLine parser,
 │                        #   emitters (T:1/133/201/202), breath_light demo
 ├── cv_ctrl.py           # CameraFlinger/CV engine: USB→CSI→OAK detect, Picamera2/OpenCV,
@@ -215,11 +216,14 @@ ugv_rpi/
 ├── requirements.txt     # pinned deps (Flask, aiortc, opencv, mediapipe, picamera2, torch…)
 ├── setup.sh / autorun.sh / start_jupyter.sh
 ├── AccessPopup/         # WiFi hotspot fallback manager
-├── templates/           # web UI: index.html + control.js (socket cmds, keyboard, gamepad)
-│                        #   photo.html/video.html galleries, style.css, vendored libs
+├── templates/           # web UI: shared tab bar (nav.js) across Control / Dashboard /
+│                        #   Telemetry / Joystick / Gait / Settings / Photos / Videos pages,
+│                        #   control.js (socket cmds, keyboard, gamepad), style.css, vendored libs
 ├── media/  sounds/  models/   # UI assets, audio files, CV models
-├── tutorial_en/ tutorial_cn/  # Jupyter tutorials (generic Waveshare UGV command set —
-│                               # NOT all commands apply to WAVEGO Pro; see instruction table)
+├── tutorial_en/ tutorial_cn/  # Jupyter tutorials — notebooks 30-31 are WAVEGO Pro-specific
+│                               #   (HTTP bypass API, realtime telemetry); 10/11/21 carry
+│                               #   notices (removed audio / unsupported line-follow); the rest
+│                               #   are the generic Waveshare UGV set — see instruction table
 └── 99-dai.rules  asound.conf  # device/audio udev config
 ```
 
