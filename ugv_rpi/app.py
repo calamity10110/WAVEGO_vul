@@ -20,6 +20,16 @@ else:
 
 threading.Thread(target=lambda: base.breath_light(15), daemon=True).start()
 
+# last movement-command timestamp, consumed by /api/status and the failsafe daemon
+MOTION = {'t': None}
+
+
+def _note_motion(t):
+    MOTION['t'] = t
+
+
+base.motion_hook = _note_motion
+
 # config file.
 curpath = os.path.realpath(__file__)
 thisPath = os.path.dirname(curpath)
@@ -445,8 +455,10 @@ def api_cmd():
 @app.route('/api/status')
 def api_status():
     base_data = base.base_data if isinstance(base.base_data, dict) else {}
+    motion_age = round(time.time() - MOTION['t'], 1) if MOTION['t'] else None
     status = {
         'robot_name': f['base_config']['robot_name'],
+        'motion': {'last_move_s_ago': motion_age},
         'esp32': {
             'battery_voltage': base_data.get('v'),
             'raw_feedback': base_data,

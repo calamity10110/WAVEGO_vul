@@ -268,6 +268,7 @@ Then trigger it with `{"T":112,"func":6}`. Build and flash with PlatformIO (`pio
 | Main app (`app.py`) | cron `@reboot`, port 5000 | tabbed Web UI (Control / Dashboard / Telemetry / Joystick / Gait / Settings / Photos / Videos), HTTP API, sole UART owner |
 | Voice assistant | `ugv_rpi/install_voice.sh` → `wavego-voice.service` | phrase grammar → `/api/cmd`, `/api/cv`, `/api/vlm` |
 | VLM goal control | `ugv_rpi/install_vlm.sh` → `wavego-vlm.service` | goal sessions → software-verified gait commands |
+| Failsafe watchdog | `ugv_rpi/install_failsafe.sh` → `wavego-failsafe.service` | post-mortem UART stop if the main app dies within the motion grace window (no reflash needed) |
 
 Full HTTP API reference (bypass API table): [`ugv_rpi/README.md`](ugv_rpi/README.md).
 Jupyter tutorials run at `:8888` (`tutorial_en/`, `tutorial_cn/`) — notebooks **30–31** cover the WAVEGO Pro HTTP API and realtime telemetry; notebooks **10, 11, 21** carry WAVEGO Pro notices (removed audio stack / unsupported line-following).

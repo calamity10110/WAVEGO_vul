@@ -136,13 +136,14 @@ class BaseController:
 		self.command_queue = queue.Queue()
 		self.command_thread = threading.Thread(target=self.process_commands, daemon=True)
 		self.command_thread.start()
+		self.motion_hook = None
 
 		self.data_buffer = None
 		self.base_data = None
 
 		self.use_lidar = f['base_config']['use_lidar']
 		self.extra_sensor = f['base_config']['extra_sensor']
-		
+
 
 	def feedback_data(self):
 		try:
@@ -178,6 +179,12 @@ class BaseController:
 		while True:
 			data = self.command_queue.get()
 			self.ser.write((json.dumps(data) + '\n').encode("utf-8"))
+			if self.motion_hook is not None:
+				try:
+					if data.get('T') in (1, 111) and (data.get('L') or data.get('R') or data.get('FB') or data.get('LR')):
+						self.motion_hook(time.time())
+				except Exception:
+					pass
 			# print(data)
 
 

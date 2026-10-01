@@ -123,7 +123,9 @@ Operational recommendations:
 1. **Suspension first**: for any new build or parameter change, put the robot on a stand (belly supported, feet off the ground) and verify mode/state behavior with zero locomotion risk.
 2. **Leash on first ground tests**: attach a drag line to the chassis before enabling FOLLOW or voice movement on the ground.
 3. **Rehearse the failure**: know where the power switch is before the first autonomous walk. On a leash, test it deliberately — start following, `pkill -f app.py`, observe that the robot keeps moving, cut power. That is expected behavior, not a bug to chase.
-4. The definitive fix is firmware-side — a gait auto-timeout in `wavego_pro_platformio` (stop when no `T:111`/`T:1` arrives within N ms). Future work; everything above is mitigation until it exists.
+4. **Install the failsafe daemon** (`./install_failsafe.sh` → `wavego-failsafe.service`): it polls the app every second; if the app stops responding within the motion grace window (last movement command <10 s ago), it opens the freed UART directly and writes a stop. Best-effort — it cannot see unreported motion and cannot act while a hung-but-alive app still holds the serial device — but it converts "walks forever" into "stops within seconds" for the app-death case.
+
+**No ESP32 reflash is required for anything in this project** — every feature runs on stock firmware. A firmware-side gait auto-timeout (stop when no `T:111`/`T:1` arrives within N ms, in `wavego_pro_platformio`) remains an *optional* future improvement: it would close the gap at the root and cover the hung-but-alive-app case that the host-side failsafe cannot. Until you choose to flash it, the failsafe daemon plus the manual rules above are the safety story.
 
 ## Voice assistant (optional)
 
