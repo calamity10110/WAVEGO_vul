@@ -65,7 +65,8 @@ fetch('/config')
       cv_objs = yamlObject.code.cv_objs;
       cv_clor = yamlObject.code.cv_clor;
       mp_hand = yamlObject.code.mp_hand;
-      cv_auto = yamlObject.code.cv_auto;
+      // // [WAVEGO Pro] disabled: line-follow needs T:13 (unsupported)
+      // cv_auto = yamlObject.code.cv_auto;
       mp_face = yamlObject.code.mp_face;
       mp_pose = yamlObject.code.mp_pose;
       if (yamlObject.code.cv_person !== undefined) {
@@ -559,8 +560,9 @@ socket.on('update', function(data) {
         } else if (data[detect_type] == cv_face) {
             dtIco.classList.add("feed_ico", "feed_ico_face");
             DTbuttons[2].classList.add("ctl_btn_active");
-        } else if (data[detect_type] == cv_auto) {
-            CButtons[2].classList.add("ctl_btn_active");
+        // // [WAVEGO Pro] disabled: line-follow needs T:13 (unsupported)
+        // } else if (data[detect_type] == cv_auto) {
+        //     CButtons[2].classList.add("ctl_btn_active");
         } else if (data[detect_type] == cv_objs) {
             FButtons[0].classList.add("ctl_btn_active");
         } else if (data[detect_type] == cv_clor) {
@@ -575,11 +577,12 @@ socket.on('update', function(data) {
             FButtons[3].classList.add("ctl_btn_active");
         }
 
-        if (data[detect_type] == cv_auto && cv_heartbeat_stop_flag == false) {
-            cv_heartbeat_stop_flag = true;
-        } else if (cv_heartbeat_stop_flag == true) {
-            cv_heartbeat_stop_flag = false;
-        }
+        // // [WAVEGO Pro] disabled: line-follow needs T:13 (unsupported) (cv_auto heartbeat)
+        //         if (data[detect_type] == cv_auto && cv_heartbeat_stop_flag == false) {
+        //             cv_heartbeat_stop_flag = true;
+        //         } else if (cv_heartbeat_stop_flag == true) {
+        //             cv_heartbeat_stop_flag = false;
+        //         }
 
         if (data[cv_movtion_mode] == true) {
             CButtons[0].classList.add("ctl_btn_active");

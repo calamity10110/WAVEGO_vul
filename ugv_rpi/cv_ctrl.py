@@ -121,16 +121,17 @@ class OpencvFuncs():
         self.gs_pic_last_time = time.time()
 
         # findline autodrive
-        self.sampling_line_1 = 0.6
-        self.sampling_line_2 = 0.9
-        self.slope_impact = 1.5
-        self.base_impact = 0.005
-        self.speed_impact = 0.5
-        self.line_track_speed = 0.3
-        self.slope_on_speed = 0.1
-        self.line_lower = np.array([25, 150, 70])
-        self.line_upper = np.array([42, 255, 255])
-
+# [WAVEGO Pro] disabled: wheel-vehicle code (T:13 unsupported by gait engine) - line-follow config
+#         self.sampling_line_1 = 0.6
+#         self.sampling_line_2 = 0.9
+#         self.slope_impact = 1.5
+#         self.base_impact = 0.005
+#         self.speed_impact = 0.5
+#         self.line_track_speed = 0.3
+#         self.slope_on_speed = 0.1
+#         self.line_lower = np.array([25, 150, 70])
+#         self.line_upper = np.array([42, 255, 255])
+#
         # mediapipe detect faces
         self.mp_face_detection = mp.solutions.face_detection
         self.face_detection = self.mp_face_detection.FaceDetection(model_selection=0, min_detection_confidence=0.5)
@@ -857,123 +858,124 @@ class OpencvFuncs():
     #     self.overlay = overlay_bgra
 
 
-    def cv_auto_drive(self, img):
-        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-
-        # get a sampling
-        height, width = img.shape[:2]
-        center_x, center_y = width // 2, height // 2
-        mask_sampling = np.zeros((height, width), dtype=np.uint8)
-        cv2.circle(mask_sampling, (center_x, center_y), int(self.sampling_rad/4), (255), thickness=-1)
-        masked_hsv = cv2.bitwise_and(hsv, hsv, mask=mask_sampling)
-        masked_hsv_pixels = masked_hsv[mask_sampling == 255]
-        lower_hsv = np.min(masked_hsv_pixels, axis=0)
-        upper_hsv = np.max(masked_hsv_pixels, axis=0)
-
-        # select the line color & get the mask
-        # img = cv2.GaussianBlur(img, (11, 11), 0)
-        line_mask = cv2.inRange(hsv, self.line_lower, self.line_upper)
-        line_mask = cv2.erode(line_mask, None, iterations=2)
-        line_mask = cv2.dilate(line_mask, None, iterations=2)
-
-        sampling_h1 = int(height * self.sampling_line_1)
-        sampling_h2 = int(height * self.sampling_line_2)
-
-        get_sampling_1 = line_mask[sampling_h1]
-        get_sampling_2 = line_mask[sampling_h2]
-
-        sampling_width_1 = np.sum(get_sampling_1 == 255)
-        sampling_width_2 = np.sum(get_sampling_2 == 255)
-
-        if sampling_width_1:
-            sam_1 = True
-        else:
-            sam_1 = False
-        if sampling_width_2:
-            sam_2 = True
-        else:
-            sam_2 = False
-
-        line_index_1 = np.where(get_sampling_1 == 255)
-        line_index_2 = np.where(get_sampling_2 == 255)
-
-        if sam_1:
-            sampling_1_left  = line_index_1[0][0]
-            sampling_1_right = line_index_1[0][sampling_width_1 - 1]
-            sampling_1_center= int((sampling_1_left + sampling_1_right) / 2)
-        if sam_2:
-            sampling_2_left  = line_index_2[0][0]
-            sampling_2_right = line_index_2[0][sampling_width_2 - 1]
-            sampling_2_center= int((sampling_2_left + sampling_2_right) / 2)
-
-        line_slope = 0
-        input_speed = 0
-        input_turning = 0
-        if sam_1 and sam_2:
-            line_slope = (sampling_1_center - sampling_2_center) / abs(sampling_h1 - sampling_h2)
-            impact_by_slope = self.slope_on_speed * abs(line_slope)
-            # if impact_by_slope > input_speed:
-            #     impact_by_slope = input_speed
-            input_speed = self.line_track_speed - impact_by_slope
-            # print(f'im_by_slope:{impact_by_slope}   input_speed:{input_speed}')
-            input_turning = -(line_slope * self.slope_impact + (sampling_2_center - center_x) * self.base_impact) #+ (speed_impact * input_speed)
-        elif not sam_1 and sam_2:
-            input_speed = 0
-            input_turning = (sampling_2_center - center_x) * self.base_impact
-        elif sam_1 and not sam_2:
-            input_speed = (self.line_track_speed / 3)
-            input_turning = 0
-        else:
-            input_speed = - (self.line_track_speed / 3)
-            input_turning = 0
-
-        # input_turning = - line_slope * slope_impact
-        # try:
-        #     input_turning = -(sampling_2_center - center_x) * base_impact
-        # except:
-        #     pass
-        if not self.cv_movtion_lock:
-            self.base_ctrl.base_json_ctrl({"T":13,"X":input_speed,"Z":input_turning})
-
-        # overlay_buffer = np.zeros_like(img)
-        # overlay_buffer = cv2.cvtColor(line_mask, cv2.COLOR_GRAY2BGR)
-        overlay_bgr = np.zeros((img.shape[0], img.shape[1], 3), dtype=np.uint8)
-        overlay_bgr = cv2.cvtColor(line_mask, cv2.COLOR_GRAY2BGR)
-
-        cv2.putText(overlay_buffer, 'Line Following', (100, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
-        cv2.circle(overlay_buffer, (center_x, center_y), int(self.sampling_rad/4), (64, 255, 64), 1)
-
-        cv2.putText(overlay_buffer, ' SAM_H1: {}'.format(self.sampling_line_1), (center_x-150, sampling_h1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 128, 128), 1)
-        cv2.putText(overlay_buffer, ' SAM_H2: {}'.format(self.sampling_line_2), (center_x-150, sampling_h2-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 128, 128), 1)
-
-        cv2.putText(overlay_buffer, f'X: {input_speed:.2f}, Z: {input_turning:.2f}', (center_x+50, center_y+0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-
-        cv2.putText(overlay_buffer, ' UPPER: {}'.format(upper_hsv), (center_x+50, center_y+40), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-        cv2.putText(overlay_buffer, ' LOWER: {}'.format(lower_hsv), (center_x+50, center_y+60), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-
-        cv2.putText(overlay_buffer, ' UPPER: {}'.format(self.line_upper), (center_x+50, center_y+100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 128, 128), 1)
-        cv2.putText(overlay_buffer, ' LOWER: {}'.format(self.line_lower), (center_x+50, center_y+120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 128, 128), 1)
-        cv2.putText(overlay_buffer, f' SLOPE: {line_slope:.2f}', (center_x+50, center_y+140), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 128, 128), 1)
-        cv2.putText(overlay_buffer, f' SAM_1 SAM_2 SLOPE_IM BASE_IM SPD_IM LT_SPD SLOPE_SPD', (center_x-250, center_y-70), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 128, 128), 1)
-        cv2.putText(overlay_buffer, f' {self.sampling_line_1:.2f}   {self.sampling_line_2:.2f}   {self.slope_impact:.2f}      {self.base_impact:.4f}  {self.speed_impact:.2f}    {self.line_track_speed:.2f}    {self.slope_on_speed:.2f}', (center_x-250, center_y-50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 128, 128), 1)
-
-        cv2.line(overlay_buffer, (0, sampling_h1), (width, sampling_h1), (255, 0, 0), 2)
-        cv2.line(overlay_buffer, (0, sampling_h2), (width, sampling_h2), (255, 0, 0), 2)
-
-        if sam_1:
-            cv2.line(overlay_buffer, (sampling_1_left, sampling_h1+20), (sampling_1_left, sampling_h1-20), (0, 255, 0), 2)
-            cv2.line(overlay_buffer, (sampling_1_right, sampling_h1+20), (sampling_1_right, sampling_h1-20), (0, 255, 0), 2)
-        if sam_2:
-            cv2.line(overlay_buffer, (sampling_2_left, sampling_h2+20), (sampling_2_left, sampling_h2-20), (0, 255, 0), 2)
-            cv2.line(overlay_buffer, (sampling_2_right, sampling_h2+20), (sampling_2_right, sampling_h2-20), (0, 255, 0), 2)
-        if sam_1 and sam_2:
-            cv2.line(overlay_buffer, (sampling_1_center, sampling_h1), (sampling_2_center, sampling_h2), (255, 0, 0), 2)
-
-        overlay_bgra = cv2.cvtColor(overlay_bgr, cv2.COLOR_BGR2BGRA)
-        self.overlay = overlay_bgra
-        # self.overlay = overlay_buffer
-
-
+# [WAVEGO Pro] disabled: wheel-vehicle code (T:13 unsupported by gait engine) - line-follow pipeline (T:13 not implemented)
+#     def cv_auto_drive(self, img):
+#         hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+#
+#         # get a sampling
+#         height, width = img.shape[:2]
+#         center_x, center_y = width // 2, height // 2
+#         mask_sampling = np.zeros((height, width), dtype=np.uint8)
+#         cv2.circle(mask_sampling, (center_x, center_y), int(self.sampling_rad/4), (255), thickness=-1)
+#         masked_hsv = cv2.bitwise_and(hsv, hsv, mask=mask_sampling)
+#         masked_hsv_pixels = masked_hsv[mask_sampling == 255]
+#         lower_hsv = np.min(masked_hsv_pixels, axis=0)
+#         upper_hsv = np.max(masked_hsv_pixels, axis=0)
+#
+#         # select the line color & get the mask
+#         # img = cv2.GaussianBlur(img, (11, 11), 0)
+#         line_mask = cv2.inRange(hsv, self.line_lower, self.line_upper)
+#         line_mask = cv2.erode(line_mask, None, iterations=2)
+#         line_mask = cv2.dilate(line_mask, None, iterations=2)
+#
+#         sampling_h1 = int(height * self.sampling_line_1)
+#         sampling_h2 = int(height * self.sampling_line_2)
+#
+#         get_sampling_1 = line_mask[sampling_h1]
+#         get_sampling_2 = line_mask[sampling_h2]
+#
+#         sampling_width_1 = np.sum(get_sampling_1 == 255)
+#         sampling_width_2 = np.sum(get_sampling_2 == 255)
+#
+#         if sampling_width_1:
+#             sam_1 = True
+#         else:
+#             sam_1 = False
+#         if sampling_width_2:
+#             sam_2 = True
+#         else:
+#             sam_2 = False
+#
+#         line_index_1 = np.where(get_sampling_1 == 255)
+#         line_index_2 = np.where(get_sampling_2 == 255)
+#
+#         if sam_1:
+#             sampling_1_left  = line_index_1[0][0]
+#             sampling_1_right = line_index_1[0][sampling_width_1 - 1]
+#             sampling_1_center= int((sampling_1_left + sampling_1_right) / 2)
+#         if sam_2:
+#             sampling_2_left  = line_index_2[0][0]
+#             sampling_2_right = line_index_2[0][sampling_width_2 - 1]
+#             sampling_2_center= int((sampling_2_left + sampling_2_right) / 2)
+#
+#         line_slope = 0
+#         input_speed = 0
+#         input_turning = 0
+#         if sam_1 and sam_2:
+#             line_slope = (sampling_1_center - sampling_2_center) / abs(sampling_h1 - sampling_h2)
+#             impact_by_slope = self.slope_on_speed * abs(line_slope)
+#             # if impact_by_slope > input_speed:
+#             #     impact_by_slope = input_speed
+#             input_speed = self.line_track_speed - impact_by_slope
+#             # print(f'im_by_slope:{impact_by_slope}   input_speed:{input_speed}')
+#             input_turning = -(line_slope * self.slope_impact + (sampling_2_center - center_x) * self.base_impact) #+ (speed_impact * input_speed)
+#         elif not sam_1 and sam_2:
+#             input_speed = 0
+#             input_turning = (sampling_2_center - center_x) * self.base_impact
+#         elif sam_1 and not sam_2:
+#             input_speed = (self.line_track_speed / 3)
+#             input_turning = 0
+#         else:
+#             input_speed = - (self.line_track_speed / 3)
+#             input_turning = 0
+#
+#         # input_turning = - line_slope * slope_impact
+#         # try:
+#         #     input_turning = -(sampling_2_center - center_x) * base_impact
+#         # except:
+#         #     pass
+#         if not self.cv_movtion_lock:
+#             self.base_ctrl.base_json_ctrl({"T":13,"X":input_speed,"Z":input_turning})
+#
+#         # overlay_buffer = np.zeros_like(img)
+#         # overlay_buffer = cv2.cvtColor(line_mask, cv2.COLOR_GRAY2BGR)
+#         overlay_bgr = np.zeros((img.shape[0], img.shape[1], 3), dtype=np.uint8)
+#         overlay_bgr = cv2.cvtColor(line_mask, cv2.COLOR_GRAY2BGR)
+#
+#         cv2.putText(overlay_buffer, 'Line Following', (100, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+#         cv2.circle(overlay_buffer, (center_x, center_y), int(self.sampling_rad/4), (64, 255, 64), 1)
+#
+#         cv2.putText(overlay_buffer, ' SAM_H1: {}'.format(self.sampling_line_1), (center_x-150, sampling_h1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 128, 128), 1)
+#         cv2.putText(overlay_buffer, ' SAM_H2: {}'.format(self.sampling_line_2), (center_x-150, sampling_h2-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 128, 128), 1)
+#
+#         cv2.putText(overlay_buffer, f'X: {input_speed:.2f}, Z: {input_turning:.2f}', (center_x+50, center_y+0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+#
+#         cv2.putText(overlay_buffer, ' UPPER: {}'.format(upper_hsv), (center_x+50, center_y+40), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+#         cv2.putText(overlay_buffer, ' LOWER: {}'.format(lower_hsv), (center_x+50, center_y+60), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+#
+#         cv2.putText(overlay_buffer, ' UPPER: {}'.format(self.line_upper), (center_x+50, center_y+100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 128, 128), 1)
+#         cv2.putText(overlay_buffer, ' LOWER: {}'.format(self.line_lower), (center_x+50, center_y+120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 128, 128), 1)
+#         cv2.putText(overlay_buffer, f' SLOPE: {line_slope:.2f}', (center_x+50, center_y+140), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 128, 128), 1)
+#         cv2.putText(overlay_buffer, f' SAM_1 SAM_2 SLOPE_IM BASE_IM SPD_IM LT_SPD SLOPE_SPD', (center_x-250, center_y-70), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 128, 128), 1)
+#         cv2.putText(overlay_buffer, f' {self.sampling_line_1:.2f}   {self.sampling_line_2:.2f}   {self.slope_impact:.2f}      {self.base_impact:.4f}  {self.speed_impact:.2f}    {self.line_track_speed:.2f}    {self.slope_on_speed:.2f}', (center_x-250, center_y-50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 128, 128), 1)
+#
+#         cv2.line(overlay_buffer, (0, sampling_h1), (width, sampling_h1), (255, 0, 0), 2)
+#         cv2.line(overlay_buffer, (0, sampling_h2), (width, sampling_h2), (255, 0, 0), 2)
+#
+#         if sam_1:
+#             cv2.line(overlay_buffer, (sampling_1_left, sampling_h1+20), (sampling_1_left, sampling_h1-20), (0, 255, 0), 2)
+#             cv2.line(overlay_buffer, (sampling_1_right, sampling_h1+20), (sampling_1_right, sampling_h1-20), (0, 255, 0), 2)
+#         if sam_2:
+#             cv2.line(overlay_buffer, (sampling_2_left, sampling_h2+20), (sampling_2_left, sampling_h2-20), (0, 255, 0), 2)
+#             cv2.line(overlay_buffer, (sampling_2_right, sampling_h2+20), (sampling_2_right, sampling_h2-20), (0, 255, 0), 2)
+#         if sam_1 and sam_2:
+#             cv2.line(overlay_buffer, (sampling_1_center, sampling_h1), (sampling_2_center, sampling_h2), (255, 0, 0), 2)
+#
+#         overlay_bgra = cv2.cvtColor(overlay_bgr, cv2.COLOR_BGR2BGRA)
+#         self.overlay = overlay_bgra
+#         # self.overlay = overlay_buffer
+#
+#
     def mediaPipe_faces(self, img):
         image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         results = self.face_detection.process(image)
@@ -1053,7 +1055,8 @@ class OpencvFuncs():
             f['code']['cv_objs']: self.cv_detect_objects,
             f['code']['cv_clor']: self.cv_detect_color,
             f['code']['mp_hand']: self.mp_detect_hand,
-            f['code']['cv_auto']: self.cv_auto_drive,
+    # # [WAVEGO Pro] disabled: wheel-vehicle code (T:13 unsupported by gait engine):
+    # f['code']['cv_auto']: self.cv_auto_drive,
             f['code']['mp_face']: self.mediaPipe_faces,
             f['code']['mp_pose']: self.mediaPipe_pose
         }
@@ -1101,21 +1104,22 @@ class OpencvFuncs():
             self.color_lower = self.color_list[color_name][0]
             self.color_upper = self.color_list[color_name][1]
 
-    def change_line_color(self, lc, uc):
-        self.line_lower = np.array([lc[0], lc[1], lc[2]])
-        self.line_upper = np.array([uc[0], uc[1], uc[2]])
-
-    def set_line_track_args(self, sam_pos_1, sam_pos_2, slope_im, base_im, spd_im, lt_spd, slope_spd):
-        self.sampling_line_1 = sam_pos_1
-        if sam_pos_2 < sam_pos_1:
-            sam_pos_2 = sam_pos_1 + 0.1
-        self.sampling_line_2 = sam_pos_2
-        self.slope_impact = slope_im
-        self.base_impact = base_im
-        self.speed_impact = spd_im
-        self.line_track_speed = lt_spd
-        self.slope_on_speed = slope_spd
-
+# [WAVEGO Pro] disabled: wheel-vehicle code (T:13 unsupported by gait engine) - line-follow tuning entry points
+#     def change_line_color(self, lc, uc):
+#         self.line_lower = np.array([lc[0], lc[1], lc[2]])
+#         self.line_upper = np.array([uc[0], uc[1], uc[2]])
+#
+#     def set_line_track_args(self, sam_pos_1, sam_pos_2, slope_im, base_im, spd_im, lt_spd, slope_spd):
+#         self.sampling_line_1 = sam_pos_1
+#         if sam_pos_2 < sam_pos_1:
+#             sam_pos_2 = sam_pos_1 + 0.1
+#         self.sampling_line_2 = sam_pos_2
+#         self.slope_impact = slope_im
+#         self.base_impact = base_im
+#         self.speed_impact = spd_im
+#         self.line_track_speed = lt_spd
+#         self.slope_on_speed = slope_spd
+#
     def set_pt_track_args(self, args_1, args_2):
         if args_1 == '-c' or args_1 == '--color_iterate':
             self.track_color_iterate = float(args_2)

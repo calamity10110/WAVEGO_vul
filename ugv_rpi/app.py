@@ -92,7 +92,8 @@ cmd_actions = {
     f['code']['cv_objs']: lambda: cvf.set_cv_mode(f['code']['cv_objs']),
     f['code']['cv_clor']: lambda: cvf.set_cv_mode(f['code']['cv_clor']),
     f['code']['mp_hand']: lambda: cvf.set_cv_mode(f['code']['mp_hand']),
-    f['code']['cv_auto']: lambda: cvf.set_cv_mode(f['code']['cv_auto']),
+    # [WAVEGO Pro] disabled: line-follow needs T:13 (unsupported)
+    # f['code']['cv_auto']: lambda: cvf.set_cv_mode(f['code']['cv_auto']),
     f['code']['mp_face']: lambda: cvf.set_cv_mode(f['code']['mp_face']),
     f['code']['mp_pose']: lambda: cvf.set_cv_mode(f['code']['mp_pose']),
 
@@ -251,12 +252,14 @@ def offer():
 
 # set product version
 def set_version(input_main, input_module):
-    if input_main == 1:
-        cvf.info_update("RaspRover", (0,255,255), 0.36)
-    elif input_main == 2:
+    # # [WAVEGO Pro] disabled: other-product / wheel-vehicle code
+    # if input_main == 1:
+    # cvf.info_update("RaspRover", (0,255,255), 0.36)
+    if input_main == 2:
         cvf.info_update("UGV Rover", (0,255,255), 0.36)
-    elif input_main == 3:
-        cvf.info_update("UGV Beast", (0,255,255), 0.36)
+    # # [WAVEGO Pro] disabled: other-product / wheel-vehicle code
+    # elif input_main == 3:
+    # cvf.info_update("UGV Beast", (0,255,255), 0.36)
     if input_module == 0:
         cvf.info_update("No Module", (0,255,255), 0.36)
     elif input_module == 1:
@@ -329,38 +332,39 @@ def cmdline_ctrl(args_string):
                 return
             cvf.set_video_quality(int(args[2]))
 
-    elif args[0] == 'line':
-        if args[1] == '-r' or args[1] == '--range':
-            try:
-                lower_trimmed = args[2].strip("[]")
-                lower_nums = [int(lower_num) for lower_num in lower_trimmed.split(",")]
-                if all(0 <= num <= 255 for num in lower_nums):
-                    pass
-                else:
-                    return
-            except:
-                return
-            try:
-                upper_trimmed = args[3].strip("[]")
-                upper_nums = [int(upper_num) for upper_num in upper_trimmed.split(",")]
-                if all(0 <= num <= 255 for num in upper_nums):
-                    pass
-                else:
-                    return
-            except:
-                return
-            cvf.change_line_color(lower_nums, upper_nums)
-        elif args[1] == '-s' or args[1] == '--set':
-            if len(args) != 9:
-                return
-            try:
-                for i in range(2,9):
-                    float(args[i])
-            except:
-                return
-            # line -s 0.7 0.8 1.6 0.0006 0.6 0.4 0.2
-            cvf.set_line_track_args(float(args[2]), float(args[3]), float(args[4]), float(args[5]), float(args[6]), float(args[7]), float(args[8]))
-
+    # # [WAVEGO Pro] disabled: other-product / wheel-vehicle code - line-follow pipeline
+# elif args[0] == 'line':
+# if args[1] == '-r' or args[1] == '--range':
+# try:
+# lower_trimmed = args[2].strip("[]")
+# lower_nums = [int(lower_num) for lower_num in lower_trimmed.split(",")]
+# if all(0 <= num <= 255 for num in lower_nums):
+# pass
+# else:
+# return
+# except:
+# return
+# try:
+# upper_trimmed = args[3].strip("[]")
+# upper_nums = [int(upper_num) for upper_num in upper_trimmed.split(",")]
+# if all(0 <= num <= 255 for num in upper_nums):
+# pass
+# else:
+# return
+# except:
+# return
+# cvf.change_line_color(lower_nums, upper_nums)
+# elif args[1] == '-s' or args[1] == '--set':
+# if len(args) != 9:
+# return
+# try:
+# for i in range(2,9):
+# float(args[i])
+# except:
+# return
+# # line -s 0.7 0.8 1.6 0.0006 0.6 0.4 0.2
+# cvf.set_line_track_args(float(args[2]), float(args[3]), float(args[4]), float(args[5]), float(args[6]), float(args[7]), float(args[8]))
+#
     elif args[0] == 'track':
         cvf.set_pt_track_args(args[1], args[2])
 
@@ -379,27 +383,30 @@ def cmdline_ctrl(args_string):
         elif args[1] == '-e' or args[1] == '--end' or args[1] == '--stop':
             cvf.mission_stop()
 
-    elif args[0] == 'p':
-        main_type = int(args[1][0])
-        module_type = int(args[1][1])
-        set_version(main_type, module_type)
-
-    # s 20
+    # # [WAVEGO Pro] disabled: other-product / wheel-vehicle code (RaspRover / UGV Beast version text)
+# elif args[0] == 'p':
+# main_type = int(args[1][0])
+# module_type = int(args[1][1])
+# set_version(main_type, module_type)
+#
+# # s 20
     elif args[0] == 's':
         main_type = int(args[1][0])
         module_type = int(args[1][1])
-        if main_type == 1:
-            f['base_config']['robot_name'] = "RaspRover"
-            f['args_config']['max_speed'] = 0.65
-            f['args_config']['slow_speed'] = 0.3
-        elif main_type == 2:
+    # # [WAVEGO Pro] disabled: other-product / wheel-vehicle code
+    # if main_type == 1:
+    # f['base_config']['robot_name'] = "RaspRover"
+    # f['args_config']['max_speed'] = 0.65
+    # f['args_config']['slow_speed'] = 0.3
+        if main_type == 2:
             f['base_config']['robot_name'] = "UGV Rover"
             f['args_config']['max_speed'] = 1.3
             f['args_config']['slow_speed'] = 0.2
-        elif main_type == 3:
-            f['base_config']['robot_name'] = "UGV Beast"
-            f['args_config']['max_speed'] = 1.0
-            f['args_config']['slow_speed'] = 0.2
+    # # [WAVEGO Pro] disabled: other-product / wheel-vehicle code
+    # elif main_type == 3:
+    # f['base_config']['robot_name'] = "UGV Beast"
+    # f['args_config']['max_speed'] = 1.0
+    # f['args_config']['slow_speed'] = 0.2
         f['base_config']['main_type'] = main_type
         f['base_config']['module_type'] = module_type
         with open(thisPath + '/config.yaml', "w") as yaml_file:
@@ -729,10 +736,10 @@ if __name__ == "__main__":
     si.update_folder(thisPath)
 
     # pt/arm looks forward
-    if f['base_config']['module_type'] == 1:
-        base.base_json_ctrl({"T":f['cmd_config']['cmd_arm_ctrl_ui'],"E":f['args_config']['arm_default_e'],"Z":f['args_config']['arm_default_z'],"R":f['args_config']['arm_default_r']})
-    else:
-        base.gimbal_ctrl(0, 0, 200, 10)
+    # # [WAVEGO Pro] disabled: other-product / wheel-vehicle code (no arm module on this build)
+    # base.base_json_ctrl({"T":f['cmd_config']['cmd_arm_ctrl_ui'],"E":f['args_config']['arm_default_e'],"Z":f['args_config']['arm_default_z'],"R":f['args_config']['arm_default_r']})
+    # else: (arm module builds only)
+    base.gimbal_ctrl(0, 0, 200, 10)
 
     # feedback loop starts
     si.start()

@@ -25,9 +25,9 @@ cmd_config:
   cmd_gimbal_ctrl: 133
   cmd_gimbal_steady: 137
   cmd_movition_ctrl: 1
-  cmd_pwm_ctrl: 11
+  # [WAVEGO Pro] disabled (wheel-vehicle / unsupported pipeline): cmd_pwm_ctrl: 11
 code:
-  cv_auto: 10307
+  # [WAVEGO Pro] disabled (wheel-vehicle / unsupported pipeline): cv_auto: 10307
   cv_clor: 10305
   cv_face: 10303
   cv_moti: 10302

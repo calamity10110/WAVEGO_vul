@@ -7,3 +7,5 @@ templates/pictures/photo*
 templates/videos/video*
 vlm_ctrl/media_frames/
 voice/sounds/
+
+**/graphify-out/

@@ -127,6 +127,17 @@ Operational recommendations:
 
 **No ESP32 reflash is required for anything in this project** — every feature runs on stock firmware. A firmware-side gait auto-timeout (stop when no `T:111`/`T:1` arrives within N ms, in `wavego_pro_platformio`) remains an *optional* future improvement: it would close the gap at the root and cover the hung-but-alive-app case that the host-side failsafe cannot. Until you choose to flash it, the failsafe daemon plus the manual rules above are the safety story.
 
+## Disabled wheel-vehicle / unused code
+
+Code paths that target Waveshare's wheeled robots or unused modules are **commented out with `[WAVEGO Pro]` markers** (search that string to find or restore them):
+
+- **Line following** (`cv_ctrl.cv_auto_drive` + T:13 cmdline + tuning entry points + `cv_auto` mode code) — `T:13` is not implemented by the WAVEGO Pro gait engine; the camera pipeline was fine but the robot could never move
+- **RaspRover / UGV Beast product branches** (version text + `s <type><module>` config arms for main_type 1/3) — this build is main_type 2
+- **ARM module init** (T:144, `module_type == 1` at boot) — no arm on this build; gimbal look-forward runs unconditionally
+- **`T:11` PWM drive key** — wheel-vehicle PWM, commented in `config.yaml`
+
+OAK-camera support and the lidar/extra-sensor loops stay active: they are config-gated fallbacks (`use_lidar`, `extra_sensor`), not dead paths.
+
 ## Voice assistant (optional)
 
 `voice/voice_assistant.py` is a persistent voice-command process: USB mic (16 kHz mono) → energy VAD with endpointing → Moonshine ONNX transcription → phrase grammar in `voice/voice_config.yaml` → robot via `/api/cmd` and `/api/cv`. The model is loaded once at startup — per-utterance cost is inference only (spawning a fresh Python+ONNX process per command costs ~3.2 s, which is what this design avoids). Gait commands are level-based, so every voice-triggered movement auto-stops after `move_timeout_s` (default 3 s) unless a follow-up command arrives. If the voice process itself dies inside that window, the gait persists — see [*Known limitation*](#known-limitation-motion-commands-outlive-the-controlling-process) above.
