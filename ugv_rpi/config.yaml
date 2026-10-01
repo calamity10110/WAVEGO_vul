@@ -33,6 +33,7 @@ code:
   cv_moti: 10302
   cv_none: 10301
   cv_objs: 10304
+  cv_line: 10311
   cv_person: 10310
   head_ct: 10409
   led_aut: 10405
@@ -72,6 +73,8 @@ cv:
   person_deadzone: 0.12
   person_far_ratio: 0.45
   person_lost_frames: 12
+  line_deadzone: 0.15
+  line_lost_frames: 10
   person_near_ratio: 0.72
   sampling_rad: 25
   track_acc_rate: 0.4

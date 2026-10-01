@@ -5,9 +5,9 @@ var max_res, mid_res, min_res;
 var zoom_x1, zoom_x2, zoom_x4;
 var pic_cap, vid_sta, vid_end;
 var mc_lock, mc_unlo;
-var cv_none, cv_moti, cv_face, cv_objs, cv_clor, mp_hand, cv_auto;
+var cv_none, cv_moti, cv_face, cv_objs, cv_clor, mp_hand;
 var mp_face, mp_pose;
-var cv_person;
+var cv_person, cv_line;
 var re_none, re_capt, re_reco, led_off, led_aut, led_ton;
 var head_ct;
 var armZ, armR, armE;
@@ -71,6 +71,9 @@ fetch('/config')
       mp_pose = yamlObject.code.mp_pose;
       if (yamlObject.code.cv_person !== undefined) {
         cv_person = yamlObject.code.cv_person;
+      }
+      if (yamlObject.code.cv_line !== undefined) {
+        cv_line = yamlObject.code.cv_line;
       }
 
       re_none = yamlObject.code.re_none;
@@ -575,6 +578,8 @@ socket.on('update', function(data) {
             MPButtons[1].classList.add("ctl_btn_active");
         } else if (cv_person !== undefined && data[detect_type] == cv_person) {
             FButtons[3].classList.add("ctl_btn_active");
+        } else if (cv_line !== undefined && data[detect_type] == cv_line) {
+            FButtons[4].classList.add("ctl_btn_active");
         }
 
         // // [WAVEGO Pro] disabled: line-follow needs T:13 (unsupported) (cv_auto heartbeat)

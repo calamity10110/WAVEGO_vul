@@ -9,7 +9,7 @@ import math
 import yaml, os, json, subprocess
 from collections import deque
 import textwrap
-from follow_ctrl import FollowPolicy
+from follow_ctrl import FollowPolicy, LineGaitPolicy
 
 # libraries for csi camera
 from picamera2 import Picamera2
@@ -109,6 +109,10 @@ class OpencvFuncs():
         self.follow_watchdog_timeout = 2.0
         self.follow_watchdog_stop = threading.Event()
         self.follow_watchdog_thread = None
+        self.line_policy = LineGaitPolicy(
+            deadzone=f['cv'].get('line_deadzone', 0.15),
+            lost_frames=f['cv'].get('line_lost_frames', 10))
+        self.line_last_cmd = (None, None)
 
         # mediapipe
         self.mpDraw = mp.solutions.drawing_utils
@@ -129,8 +133,8 @@ class OpencvFuncs():
 #         self.speed_impact = 0.5
 #         self.line_track_speed = 0.3
 #         self.slope_on_speed = 0.1
-#         self.line_lower = np.array([25, 150, 70])
-#         self.line_upper = np.array([42, 255, 255])
+        self.line_lower = np.array([25, 150, 70])
+        self.line_upper = np.array([42, 255, 255])
 #
         # mediapipe detect faces
         self.mp_face_detection = mp.solutions.face_detection
@@ -402,12 +406,11 @@ class OpencvFuncs():
         self.cv_mode = input_mode
         if self.cv_mode == f['code']['cv_none']:
             self.set_video_record_flag = False
-        follow_code = f['code'].get('cv_person')
-        if follow_code is not None:
-            if prev_mode == follow_code and input_mode != follow_code:
-                self.follow_stop()
-            elif prev_mode != follow_code and input_mode == follow_code:
-                self.follow_start()
+        follow_codes = {c for c in (f['code'].get('cv_person'), f['code'].get('cv_line')) if c is not None}
+        if prev_mode in follow_codes and input_mode not in follow_codes:
+            self.follow_stop()
+        elif input_mode in follow_codes and prev_mode not in follow_codes:
+            self.follow_start()
 
     def set_detection_reaction(self, input_reaction):
         self.detection_reaction_mode = input_reaction
@@ -626,6 +629,38 @@ class OpencvFuncs():
 
         self.overlay = overlay_buffer
 
+    def cv_follow_line(self, img):
+        overlay_buffer = np.zeros_like(img)
+        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        mask = cv2.inRange(hsv, self.line_lower, self.line_upper)
+        mask = cv2.erode(mask, None, iterations=2)
+        mask = cv2.dilate(mask, None, iterations=2)
+        (h, w) = img.shape[:2]
+        row = mask[int(h * 0.75), :]
+        cols = np.nonzero(row)[0]
+
+        seen = cols.size > 0
+        if seen:
+            line_cx = int(cols.mean())
+            offset = (line_cx - w / 2) / w
+            decision = self.line_policy.update(True, offset)
+            cv2.circle(overlay_buffer, (line_cx, int(h * 0.75)), 6, (0, 255, 255), -1)
+        else:
+            decision = self.line_policy.update(False)
+
+        self.follow_last_tick = time.time()
+        cv2.putText(overlay_buffer, 'LINE: {}'.format(decision.state),
+                    (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
+        if not self.cv_movtion_lock:
+            cmd = (decision.fb, decision.lr)
+            if cmd != self.line_last_cmd:
+                self.base_ctrl.base_json_ctrl({"T":111,"FB":decision.fb,"LR":decision.lr})
+                self.line_last_cmd = cmd
+
+        self.overlay = overlay_buffer
+
+
     def follow_watchdog(self):
         stopped = False
         while not self.follow_watchdog_stop.wait(0.5):
@@ -638,22 +673,22 @@ class OpencvFuncs():
 
     def follow_start(self):
         self.follow_policy.reset()
-        self.follow_last_cmd = (None, None)
+        self.line_policy.reset()
+        self.line_last_cmd = (None, None)
         self.follow_last_state = None
         self.follow_last_tick = time.time()
         self.follow_watchdog_stop.clear()
         if self.follow_watchdog_thread is None or not self.follow_watchdog_thread.is_alive():
             self.follow_watchdog_thread = threading.Thread(target=self.follow_watchdog, daemon=True)
             self.follow_watchdog_thread.start()
-
     def follow_stop(self):
         if self.follow_watchdog_thread is not None and self.follow_watchdog_thread.is_alive():
             self.follow_watchdog_stop.set()
         self.follow_policy.reset()
-        self.follow_last_cmd = (None, None)
+        self.line_policy.reset()
+        self.line_last_cmd = (None, None)
         self.follow_last_state = None
         self.base_ctrl.base_json_ctrl({"T":111,"FB":0,"LR":0})
-
     def cv_detect_color(self, img):
         global head_light_pwm
         blurred = cv2.GaussianBlur(img, (11, 11), 0)
@@ -1057,6 +1092,7 @@ class OpencvFuncs():
             f['code']['mp_hand']: self.mp_detect_hand,
     # # [WAVEGO Pro] disabled: wheel-vehicle code (T:13 unsupported by gait engine):
     # f['code']['cv_auto']: self.cv_auto_drive,
+        f['code']['cv_line']: self.cv_follow_line,
             f['code']['mp_face']: self.mediaPipe_faces,
             f['code']['mp_pose']: self.mediaPipe_pose
         }

@@ -98,3 +98,47 @@ class FollowPolicy:
             # hysteresis band: keep whatever move/stop decision we last made
             self._last = self._hold
         return self._last
+
+
+class LineGaitPolicy:
+    """Maps a detected line's horizontal offset to discrete gait commands.
+
+    offset = (line_center_x - frame_center_x) / frame_width, negative when the
+    line is left of center. Line visible and centered -> forward; off-center
+    beyond deadzone -> turn toward it; line lost for lost_frames -> LOST.
+    """
+
+    def __init__(self, deadzone=0.15, lost_frames=10):
+        if not 0.0 < deadzone < 0.5:
+            raise ValueError("deadzone must be in (0, 0.5)")
+        if lost_frames < 1:
+            raise ValueError("lost_frames must be >= 1")
+        self.deadzone = deadzone
+        self.lost_frames = lost_frames
+        self._lost = 0
+        self._last = LOST
+
+    @property
+    def last_decision(self):
+        return self._last
+
+    def reset(self):
+        self._lost = 0
+        self._last = LOST
+
+    def update(self, seen, offset=None):
+        if not seen:
+            self._lost += 1
+            if self._lost >= self.lost_frames:
+                self._last = LOST
+            return self._last
+        if offset is None:
+            raise ValueError("offset required when seen")
+        self._lost = 0
+        if offset < -self.deadzone:
+            self._last = TURN_LEFT
+        elif offset > self.deadzone:
+            self._last = TURN_RIGHT
+        else:
+            self._last = FORWARD
+        return self._last

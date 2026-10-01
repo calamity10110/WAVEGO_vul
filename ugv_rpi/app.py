@@ -1,22 +1,37 @@
 # import base_ctrl library
-from base_ctrl import BaseController
+from base_ctrl import BaseController, NullBaseController
 import threading
+import sys
 import yaml, os
 
 # raspberry pi version check.
 def is_raspberry_pi5():
-    with open('/proc/cpuinfo', 'r') as file:
-        for line in file:
-            if 'Model' in line:
-                if 'Raspberry Pi 5' in line:
-                    return True
-                else:
-                    return False
+    try:
+        with open('/proc/cpuinfo', 'r') as file:
+            for line in file:
+                if 'Model' in line:
+                    if 'Raspberry Pi 5' in line:
+                        return True
+                    else:
+                        return False
+    except OSError:
+        return False
+    return False
 
-if is_raspberry_pi5():
-    base = BaseController('/dev/ttyAMA0', 115200)
+NO_BASE = '--no-base' in sys.argv
+
+if NO_BASE:
+    print('running without ESP32 (--no-base): all robot commands are no-ops')
+    base = NullBaseController()
 else:
-    base = BaseController('/dev/serial0', 115200)
+    try:
+        if is_raspberry_pi5():
+            base = BaseController('/dev/ttyAMA0', 115200)
+        else:
+            base = BaseController('/dev/serial0', 115200)
+    except Exception as e:
+        print(f"serial open failed ({e}) — running disconnected")
+        base = NullBaseController()
 
 threading.Thread(target=lambda: base.breath_light(15), daemon=True).start()
 
@@ -112,6 +127,8 @@ cmd_actions = {
 
 if 'cv_person' in f['code']:
     cmd_actions[f['code']['cv_person']] = lambda: cvf.set_cv_mode(f['code']['cv_person'])
+if 'cv_line' in f['code']:
+    cmd_actions[f['code']['cv_line']] = lambda: cvf.set_cv_mode(f['code']['cv_line'])
 
 CV_MODE_NAMES = {
     'none': 'cv_none', 'motion': 'cv_moti', 'face': 'cv_face',
@@ -132,6 +149,8 @@ cmd_feedback_actions = [f['code']['cv_none'], f['code']['cv_moti'],
 
 if 'cv_person' in f['code']:
     cmd_feedback_actions.append(f['code']['cv_person'])
+if 'cv_line' in f['code']:
+    cmd_feedback_actions.append(f['code']['cv_line'])
 
 # Function to generate video frames from the camera
 def generate_frames():
@@ -170,15 +189,33 @@ def get_photo_names():
     photo_files = sorted(os.listdir(thisPath + '/templates/pictures'), key=lambda x: os.path.getmtime(os.path.join(thisPath + '/templates/pictures', x)), reverse=True)
     return jsonify(photo_files)
 
+def _safe_media_path(folder, filename, exts):
+    """Resolve a client-supplied media filename to a safe path inside folder.
+
+    Rejects path traversal (../), absolute paths, and wrong extensions.
+    Returns the real path, or None if the request is not allowed.
+    """
+    name = os.path.basename(filename or '')
+    if not name or os.path.splitext(name)[1].lower() not in exts:
+        return None
+    folder_real = os.path.realpath(folder)
+    path = os.path.realpath(os.path.join(folder_real, name))
+    if not path.startswith(folder_real + os.sep):
+        return None
+    return path
+
+
 @app.route('/delete_photo', methods=['POST'])
 def delete_photo():
-    filename = request.form.get('filename')
+    path = _safe_media_path(thisPath + '/templates/pictures', request.form.get('filename'), {'.jpg', '.jpeg', '.png'})
+    if path is None:
+        return jsonify(success=False, error='invalid filename'), 400
     try:
-        os.remove(os.path.join(thisPath + '/templates/pictures', filename))
+        os.remove(path)
         return jsonify(success=True)
     except Exception as e:
         print(e)
-        return jsonify(success=False)
+        return jsonify(success=False), 500
 
 @app.route('/videos/<path:filename>')
 def videos(filename):
@@ -195,13 +232,15 @@ def get_video_names():
 
 @app.route('/delete_video', methods=['POST'])
 def delete_video():
-    filename = request.form.get('filename')
+    path = _safe_media_path(thisPath + '/templates/videos', request.form.get('filename'), {'.mp4'})
+    if path is None:
+        return jsonify(success=False, error='invalid filename'), 400
     try:
-        os.remove(os.path.join(thisPath + '/templates/videos', filename))
+        os.remove(path)
         return jsonify(success=True)
     except Exception as e:
         print(e)
-        return jsonify(success=False)
+        return jsonify(success=False), 500
 
 
 
