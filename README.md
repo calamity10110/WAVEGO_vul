@@ -13,7 +13,7 @@ The WAVEGO is a 12-DOF bionic dog-like robot which features 2.3kg.cm large torqu
 The upper computer communicates with the lower computer (the robot's driver based on ESP32) by sending JSON commands via GPIO UART. The host controller, which employs a Raspberry Pi, handles AI vision and strategy planning, while the sub-controller, utilizing an ESP32, manages motion control and sensor data processing. This setup ensures efficient collaboration and enhanced performance.
 
 ## Features
-- Real-time video based on WebRTC
+- Live video stream (MJPEG `/video_feed`; WebRTC signaling endpoint present but not wired to a video element)
 - Cross-platform web application base on Flask
 - Auto targeting (OpenCV)
 - Object Recognition (OpenCV)
@@ -201,7 +201,7 @@ Notes:
 ## Sending Commands
 All 47 commands are listed in [wavego_pro_instruction_table.xlsx](./wavego_pro_instruction_table.xlsx) with parameters and examples. Quick recipes:
 
-**1. Web UI console (no code):** open the robot's web app (`[IP]:5000`), use the FEEDBACK INFORMATION input box, e.g. `{"T":111,"FB":1,"LR":0}` to walk forward. The ESP32's own web UI (`192.168.4.1`) has the same console.
+**1. Web UI console (no code):** open the robot's web app (`[IP]:5000`), use the JSON command input box, e.g. `base -c {"T":111,"FB":1,"LR":0}` to walk forward. The ESP32's own web UI (`192.168.4.1`) has the same console.
 
 **2. Serial from a PC (Python):**
 

@@ -240,10 +240,11 @@ ugv_rpi/
 │                        #   software+optional-online verification, benchmark harness
 │                        #   (python -m vlm_ctrl.benchmark, gate 2.5 s/cycle)
 ├── install_vlm.sh       # VLM service installer: systemd unit, deps, checkpoint check
-├── audio_ctrl.py        # TTS / audio playback helpers
 ├── os_info.py           # system info (si): CPU/RAM/temp, IP addresses, RSSI, folders
+├── failsafe_keepalive.py # post-mortem UART stop if the main app dies within the motion grace window
+├── install_failsafe.sh  # failsafe service installer: systemd unit, check/uninstall
 ├── config.yaml          # all runtime settings (see Settings)
-├── requirements.txt     # pinned deps (Flask, aiortc, opencv, mediapipe, picamera2, torch…)
+├── requirements.txt     # 20 direct deps (Flask, aiortc, opencv, mediapipe, picamera2, depthai, sounddevice…)
 ├── setup.sh / autorun.sh / start_jupyter.sh
 ├── AccessPopup/         # WiFi hotspot fallback manager
 ├── templates/           # web UI: shared tab bar (nav.js) across Control / Dashboard /
