@@ -23,14 +23,16 @@ class ReadLine:
 		try:
 			self.sensor_data_ser = serial.Serial(glob.glob('/dev/ttyUSB*')[0], 115200)
 			print("/dev/ttyUSB* connected succeed")
-		except:
+		except Exception as e:
+			print(f"[base_ctrl] sensor serial not available: {e}")
 			self.sensor_data_ser = None
 		self.sensor_data_max_len = 51
 
 		try:
 			self.lidar_ser = serial.Serial(glob.glob('/dev/ttyACM*')[0], 230400, timeout=1)
 			print("/dev/ttyACM* connected succeed")
-		except:
+		except Exception as e:
+			print(f"[base_ctrl] lidar serial not available: {e}")
 			self.lidar_ser = None
 		self.ANGLE_PER_FRAME = 12
 		self.HEADER = 0x54
@@ -146,6 +148,8 @@ class BaseController:
 
 
 	def feedback_data(self):
+		if not self.connected:
+			return None
 		try:
 			while self.rl.s.in_waiting > 0:
 				self.data_buffer = json.loads(self.rl.readline().decode('utf-8'))
@@ -176,9 +180,33 @@ class BaseController:
 
 
 	def process_commands(self):
+		last_reconnect = 0
 		while True:
 			data = self.command_queue.get()
+			if not self.connected:
+				if time.time() - last_reconnect > 5:
+					last_reconnect = time.time()
+					try:
+						self.ser = serial.Serial(self._uart, self._baud, timeout=1)
+						self.rl = ReadLine(self.ser)
+						self.connected = True
+						print("[base_ctrl] serial reconnected")
+					except Exception:
+						pass
+				if self.motion_hook is not None:
+					try:
+						if data.get('T') in (1, 111) and (data.get('L') or data.get('R') or data.get('FB') or data.get('LR')):
+							self.motion_hook(time.time())
+					except Exception:
+						pass
+				continue
 			self.ser.write((json.dumps(data) + '\n').encode("utf-8"))
+			if self.motion_hook is not None:
+				try:
+					if data.get('T') in (1, 111) and (data.get('L') or data.get('R') or data.get('FB') or data.get('LR')):
+						self.motion_hook(time.time())
+				except Exception:
+					pass
 			if self.motion_hook is not None:
 				try:
 					if data.get('T') in (1, 111) and (data.get('L') or data.get('R') or data.get('FB') or data.get('LR')):
@@ -214,6 +242,44 @@ class BaseController:
 
 	def gimbal_dev_close(self):
 		self.ser.close()
+
+
+class NullBaseController:
+	"""Drop-in stand-in when no ESP32 is attached (or --no-base): absorbs all
+	commands, reports no feedback. Lets the UI and all services run headless."""
+
+	def __init__(self):
+		self.connected = False
+		self.motion_hook = None
+		self.base_data = {}
+		self.rl = ReadLineStub()
+
+	def send_command(self, data):
+		pass
+
+	def base_json_ctrl(self, input_json):
+		pass
+
+	def base_speed_ctrl(self, input_left, input_right):
+		pass
+
+	def gimbal_ctrl(self, input_x, input_y, input_speed, input_acceleration):
+		pass
+
+	def base_oled(self, input_line, input_text):
+		pass
+
+	def rgb_light(self, id, r, g, b):
+		pass
+
+	def breath_light(self, input_time):
+		pass
+
+	def feedback_data(self):
+		return None
+
+	def gimbal_dev_close(self):
+		pass
 
 	def breath_light(self, input_time):
 		breath_start_time = time.time()
@@ -259,3 +325,40 @@ if __name__ == '__main__':
 
 	while True:
 		print(base.feedback_data())
+
+class NullBaseController:
+    """Drop-in stand-in when no ESP32 is attached (or --no-base): absorbs all
+    commands, reports no feedback. Lets the UI and all services run headless."""
+
+    def __init__(self):
+        self.connected = False
+        self.motion_hook = None
+        self.base_data = {}
+        self.rl = ReadLineStub()
+
+    def send_command(self, data):
+        pass
+
+    def base_json_ctrl(self, input_json):
+        pass
+
+    def base_speed_ctrl(self, input_left, input_right):
+        pass
+
+    def gimbal_ctrl(self, input_x, input_y, input_speed, input_acceleration):
+        pass
+
+    def base_oled(self, input_line, input_text):
+        pass
+
+    def rgb_light(self, id, r, g, b):
+        pass
+
+    def breath_light(self, input_time):
+        pass
+
+    def feedback_data(self):
+        return None
+
+    def gimbal_dev_close(self):
+        pass

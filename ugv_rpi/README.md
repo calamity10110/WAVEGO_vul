@@ -127,16 +127,33 @@ Operational recommendations:
 
 **No ESP32 reflash is required for anything in this project** — every feature runs on stock firmware. A firmware-side gait auto-timeout (stop when no `T:111`/`T:1` arrives within N ms, in `wavego_pro_platformio`) remains an *optional* future improvement: it would close the gap at the root and cover the hung-but-alive-app case that the host-side failsafe cannot. Until you choose to flash it, the failsafe daemon plus the manual rules above are the safety story.
 
+## ## Line following (gait-based)
+
+The **LINE** button (or `POST /api/cv {"mode":"line"}`, code `cv_line: 10311`) runs a line-follow mode that drives the **gait engine** with discrete `T:111` vectors — the original wheeled-robot `T:13` pipeline stays disabled (unsupported by this firmware). The camera samples a row at 75% frame height, computes the line's horizontal offset, and maps it to gait commands: centered → forward, off-center → turn toward the line, line lost for `line_lost_frames` (10) → stop. Tuning: `config.yaml` → `cv: line_deadzone / line_lost_frames` and the HSV `line_lower/line_upper` keys. Same watchdog + stop-on-exit + motion-lock lifecycle as person following.
+
 ## Disabled wheel-vehicle / unused code
 
 Code paths that target Waveshare's wheeled robots or unused modules are **commented out with `[WAVEGO Pro]` markers** (search that string to find or restore them):
 
-- **Line following** (`cv_ctrl.cv_auto_drive` + T:13 cmdline + tuning entry points + `cv_auto` mode code) — `T:13` is not implemented by the WAVEGO Pro gait engine; the camera pipeline was fine but the robot could never move
+- **Wheeled line-follow pipeline** (`cv_ctrl.cv_auto_drive` + `line` cmdline branch + `cv_auto` mode code) — `T:13` is not implemented by the WAVEGO Pro gait engine; use the gait-based LINE mode above instead
 - **RaspRover / UGV Beast product branches** (version text + `s <type><module>` config arms for main_type 1/3) — this build is main_type 2
 - **ARM module init** (T:144, `module_type == 1` at boot) — no arm on this build; gimbal look-forward runs unconditionally
 - **`T:11` PWM drive key** — wheel-vehicle PWM, commented in `config.yaml`
 
 OAK-camera support and the lidar/extra-sensor loops stay active: they are config-gated fallbacks (`use_lidar`, `extra_sensor`), not dead paths.
+
+## Running without the ESP32
+
+`base_ctrl.py` no longer crashes at import when the serial port is absent: `BaseController` opens the port defensively, runs disconnected, and retries the link in the background (commands are absorbed until it reconnects). For a fully UI-less dev run, start the app with:
+
+    python app.py --no-base        # skip BaseController entirely; all robot commands are no-ops
+
+The web UI, galleries, settings, and all services work in this mode — only robot motion is inert. The failsafe daemon also runs fine without the app (it only polls `/api/status`).
+
+## Security notes
+
+- `/delete_photo` and `/delete_video` resolve client-supplied filenames through `os.path.basename` + an extension whitelist + a `realpath` containment check — path traversal (`../`) and wrong-extension deletes are rejected with 400.
+- The ESP-NOW receive path in the firmware is optionally hardened (zero-fill + bounded `memcpy`, guarded by `ESPNOW_HARDENING` in `Config.h`, default on). **This one requires a reflash** — stock firmware is unaffected and everything else in this project runs without it.
 
 ## Voice assistant (optional)
 

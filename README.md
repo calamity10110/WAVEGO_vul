@@ -26,6 +26,7 @@ The upper computer communicates with the lower computer (the robot's driver base
 - Photo taking
 - Video Recording
 - Person following (onboard MobileNet-SSD detector → discrete gait control with watchdog)
+- Line following (gait-based, LINE tab — the wheeled-robot T:13 pipeline is disabled)
 - Voice assistant (persistent Moonshine ONNX ASR + phrase grammar → robot commands)
 - VLM goal control (onboard Intern-Decision decision engine, software-verified goal sessions)
 - Telemetry tab (realtime joint positions, battery, host sensors, host/client error rings)
