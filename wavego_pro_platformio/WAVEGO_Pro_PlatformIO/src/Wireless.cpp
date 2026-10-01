@@ -159,7 +159,15 @@ void OnDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len) {
         }
     }
 
-    memcpy(&espNowMegsRecv, data, sizeof(espNowMegsRecv));
+    // Optional firmware hardening (safe defaults). Set to 0 to restore stock behavior.
+    #define ESPNOW_HARDENING 1
+    #if ESPNOW_HARDENING
+        memset(&espNowMegsRecv, 0, sizeof(espNowMegsRecv));
+        size_t copy_len = (data_len < (int)sizeof(espNowMegsRecv)) ? (size_t)data_len : sizeof(espNowMegsRecv);
+        memcpy(&espNowMegsRecv, data, copy_len);
+    #else
+        memcpy(&espNowMegsRecv, data, sizeof(espNowMegsRecv));
+    #endif
 
     Serial.print("Bytes received: "); Serial.println(data_len);
 
