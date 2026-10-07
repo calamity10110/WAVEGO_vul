@@ -1,0 +1,117 @@
+# state_table.yaml — WAVEGO Agent configuration
+# Single source of truth: hex codebook, ESP32 templates, safety thresholds,
+# calibration values, and optional-node settings.
+# Precedence for all tunables: CLI flags > this file > module constants.
+
+motion:
+  codebook:
+    "000000": { name: HALT,       verified: true,  esp32: '{"T":111,"FB":0,"LR":0}',  desc: "stop all motion" }
+    "010000": { name: STAND,      verified: true,  esp32: '{"T":110}',                 desc: "stand at default height" }
+    "020000": { name: SIT,        verified: false, esp32: '{"T":112,"func":1}',       desc: "stay low (T:112 func guess)" }
+    "030000": { name: LIE_DOWN,   verified: false, esp32: '{"T":114,"h":75}',         desc: "minimum height (T:114 h=75)" }
+    "040300": { name: WALK_SLOW,  verified: true,  esp32: '{"T":111,"FB":1,"LR":0}',  desc: "walk forward (speed byte advisory)" }
+    "050300": { name: WALK,       verified: true,  esp32: '{"T":111,"FB":1,"LR":0}',  desc: "walk forward" }
+    "060300": { name: TURN_L,     verified: true,  esp32: '{"T":111,"FB":0,"LR":-1}', desc: "turn left" }
+    "070300": { name: TURN_R,     verified: true,  esp32: '{"T":111,"FB":0,"LR":1}',  desc: "turn right" }
+    "080300": { name: STEP_BACK,  verified: true,  esp32: '{"T":111,"FB":-1,"LR":0}', desc: "walk backward" }
+    "090000": { name: SHAKE_PAW,  verified: false, esp32: '{"T":112,"func":2}',       desc: "handshake (T:112 func guess)" }
+    "0A0000": { name: WAVE,       verified: false, esp32: '{"T":112,"func":99}',      desc: "wave (unmapped)" }
+    "0B0000": { name: JUMP,       verified: false, esp32: '{"T":112,"func":3}',       desc: "jump (T:112 func guess)" }
+    "0C0000": { name: NOD,        verified: false, esp32: '{"T":133,"X":0,"Y":-10}',  desc: "head down gesture" }
+
+  forbidden_transitions:
+    - ["0B0000", "040300"]
+    - ["0B0000", "050300"]
+    - ["0B0000", "060300"]
+    - ["0B0000", "070300"]
+    - ["0B0000", "080300"]
+
+  max_speed_byte: 10
+
+head:
+  codebook:
+    "00": center
+    "01": up
+    "02": down
+    "03": left
+    "04": right
+  esp32_template: '{"T":133,"X":{x},"Y":{y}}'
+  offsets:
+    center: { x: 0,   y: 0 }
+    up:     { x: 0,   y: 15 }
+    down:   { x: 0,   y: -15 }
+    left:   { x: -20, y: 0 }
+    right:  { x: 20,  y: 0 }
+
+esp32:
+  port: /dev/ttyACM0
+  baud: 115200
+  allow_unverified: false
+  command_timeout_s: 2.0
+  halt_on_disconnect: true
+
+safety:
+  battery_floor_pct: 15
+  min_cycle_s: 0.1
+  max_bad_codes: 3
+  frame_frozen_threshold: 0.98
+  frame_loop_window: 6
+  injection_keywords:
+    - "ignore previous"
+    - "disregard"
+    - "you are now"
+    - "system:"
+    - "###"
+    - "```"
+    - "new instructions"
+    - "override safety"
+  verdict_vocab: [YES, NO, PARTIAL, BLOCKED, DRIFTED, CLEAR]
+
+calibration:
+  walk_mps: 0.18
+  turn_90_s: 3.0
+
+model:
+  url: http://127.0.0.1:8080
+  timeout_s: 120
+  context_tokens: 4096
+  max_retries: 2
+
+learner:
+  enabled: true
+  min_trials: 5
+  tilt_threshold: 0.4
+  promote_trials: 3
+  idle_budget_s: 5
+  idle_min_interval_s: 600
+
+positioning:
+  enabled: false
+  aps: {}
+
+room_sense:
+  enabled: false
+  esp32cam_url: ""
+  csi_feed_url: ""
+  diff_threshold: 25
+
+remote_validator:
+  enabled: false
+
+tiny_validator:
+  enabled: false
+
+jev:
+  enabled: false
+  api_url: ""
+  confidence_threshold: 0.7
+  timeout_s: 3
+
+runlog:
+  dir: logs
+  max_frames_per_run: 40
+  max_node_entries: 500
+
+dashboard:
+  host: 0.0.0.0
+  port: 8000
