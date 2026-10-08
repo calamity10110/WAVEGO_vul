@@ -34,17 +34,18 @@ INJECTION_RX = re.compile(
 
 
 def check_frame_sanity(frames, frozen_threshold=0.98, loop_window=6):
-    """Detect frozen frames (identical hashes) and A,B,A loops."""
+    """Detect frozen frames (dominant hash) and A,B,A loops."""
     if len(frames) < 2:
         return True, "insufficient history"
 
     hashes = [hashlib.md5(f).hexdigest() if isinstance(f, bytes)
               else hashlib.md5(str(f).encode()).hexdigest() for f in frames]
 
-    if len(hashes) >= 2 and hashes[-1] == hashes[-2]:
-        identical = sum(1 for h in hashes if h == hashes[-1])
-        if identical / len(hashes) > frozen_threshold:
-            return False, f"frozen frame: {identical}/{len(hashes)} identical"
+    from collections import Counter
+    counts = Counter(hashes)
+    dominant_hash, dominant_count = counts.most_common(1)[0]
+    if dominant_count / len(hashes) >= frozen_threshold:
+        return False, f"frozen frame: {dominant_count}/{len(hashes)} identical"
 
     if len(hashes) >= loop_window:
         window = hashes[-loop_window:]
@@ -70,7 +71,7 @@ def scan_injection(text):
 def check_verdict(text, vocab=None):
     """Extract and validate a verdict from model output against the vocabulary."""
     allowed = vocab or VERDICTS
-    if not text:
+    if not text or not text.strip():
         return False, "empty verdict"
     first_word = text.strip().split()[0].upper().rstrip(".,!?")
     if first_word not in allowed:
