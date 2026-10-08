@@ -18,3 +18,5 @@ pyserial==3.5
 sounddevice==0.4.6
 soundfile==0.12.1
 depthai
+fastapi>=0.110
+uvicorn>=0.29

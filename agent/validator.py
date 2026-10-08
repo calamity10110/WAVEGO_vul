@@ -28,6 +28,7 @@ import json
 import os
 import re
 import sqlite3
+import threading
 import time
 
 import yaml
@@ -58,11 +59,12 @@ class Validator:
         self.consecutive_bad = 0
         self._ser = None
         self._db = None
+        self._db_lock = threading.Lock()
         self._init_db()
 
     def _init_db(self):
         db_path = os.path.join(os.path.dirname(self.config_path), "state.db")
-        self._db = sqlite3.connect(db_path)
+        self._db = sqlite3.connect(db_path, check_same_thread=False)
         self._db.execute("""
             CREATE TABLE IF NOT EXISTS validator_log (
                 ts REAL, code TEXT, name TEXT, source TEXT,
@@ -79,10 +81,11 @@ class Validator:
         self._db.commit()
 
     def _audit(self, code, name, source, outcome, detail=""):
-        self._db.execute(
-            "INSERT INTO validator_log VALUES (?,?,?,?,?,?)",
-            (time.time(), code, name, source, outcome, detail))
-        self._db.commit()
+        with self._db_lock:
+            self._db.execute(
+                "INSERT INTO validator_log VALUES (?,?,?,?,?,?)",
+                (time.time(), code, name, source, outcome, detail))
+            self._db.commit()
 
     def _get_serial(self):
         if self.simulate:
