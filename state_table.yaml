@@ -2,6 +2,15 @@
 # Single source of truth: hex codebook, ESP32 templates, safety thresholds,
 # calibration values, and optional-node settings.
 # Precedence for all tunables: CLI flags > this file > module constants.
+#
+# Codebook cross-checked against wavego_pro_instruction_table.json
+# (source: Config.h command IDs + main.cpp dispatcher):
+#   - T:111 has NO speed parameter; the code speed byte is advisory only.
+#   - T:112 func selectors are exactly 1=StayLow, 2=HandShake, 3=Jump,
+#     4=steady START, 5=steady STOP. The former 0A0000 WAVE (func:99) had
+#     no firmware function and was removed.
+#   - T:114 h clamps to WALK_HEIGHT_MIN..MAX = 75..110 mm.
+#   - T:133 Y pitch range is -30..+30 (maps to -17.5..+17.5 deg).
 
 motion:
   codebook:
@@ -9,15 +18,14 @@ motion:
     "010000": { name: STAND,      verified: true,  esp32: '{"T":110}',                 desc: "stand at default height" }
     "020000": { name: SIT,        verified: false, esp32: '{"T":112,"func":1}',       desc: "stay low (T:112 func guess)" }
     "030000": { name: LIE_DOWN,   verified: false, esp32: '{"T":114,"h":75}',         desc: "minimum height (T:114 h=75)" }
-    "040300": { name: WALK_SLOW,  verified: true,  esp32: '{"T":111,"FB":1,"LR":0}',  desc: "walk forward (speed byte advisory)" }
+    "040300": { name: WALK_SLOW,  verified: true,  esp32: '{"T":111,"FB":1,"LR":0}',  desc: "walk forward; identical JSON to WALK - T:111 has no speed param, speed byte is advisory" }
     "050300": { name: WALK,       verified: true,  esp32: '{"T":111,"FB":1,"LR":0}',  desc: "walk forward" }
     "060300": { name: TURN_L,     verified: true,  esp32: '{"T":111,"FB":0,"LR":-1}', desc: "turn left" }
     "070300": { name: TURN_R,     verified: true,  esp32: '{"T":111,"FB":0,"LR":1}',  desc: "turn right" }
     "080300": { name: STEP_BACK,  verified: true,  esp32: '{"T":111,"FB":-1,"LR":0}', desc: "walk backward" }
     "090000": { name: SHAKE_PAW,  verified: false, esp32: '{"T":112,"func":2}',       desc: "handshake (T:112 func guess)" }
-    "0A0000": { name: WAVE,       verified: false, esp32: '{"T":112,"func":99}',      desc: "wave (unmapped)" }
     "0B0000": { name: JUMP,       verified: false, esp32: '{"T":112,"func":3}',       desc: "jump (T:112 func guess)" }
-    "0C0000": { name: NOD,        verified: false, esp32: '{"T":133,"X":0,"Y":-10}',  desc: "head down gesture" }
+    "0C0000": { name: NOD,        verified: false, esp32: '{"T":133,"X":0,"Y":-10}',  desc: "head down gesture (T:133 pitch)" }
 
   forbidden_transitions:
     - ["0B0000", "040300"]

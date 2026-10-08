@@ -32,6 +32,7 @@ The upper computer communicates with the lower computer (the robot's driver base
 - Telemetry tab (realtime joint positions, battery, host sensors, host/client error rings)
 - Control bypass API (`/api/cmd`, `/api/status`, `/api/cv`, `/api/config`, `/api/telemetry`, `/api/vlm`)
 - Unified tabbed web UI with runtime Settings page
+- Embodied agent (`agent/`): VLM proposes hex states, deterministic validator is the sole motion authority, token-auth dashboard with estop-only write — see [Embodied agent](#embodied-agent)
 
 ## Contents
 - [Robot Schematic](#robot-schematic)
@@ -41,6 +42,7 @@ The upper computer communicates with the lower computer (the robot's driver base
 - [Sending Commands](#sending-commands)
 - [Creating Custom Actions](#creating-custom-actions)
 - [Camera Installation and Usage](#camera-installation-and-usage)
+- [Embodied agent](#embodied-agent)
 
 ## Repository Layout
 | Path | Content |
@@ -49,6 +51,8 @@ The upper computer communicates with the lower computer (the robot's driver base
 | `ugv_rpi/` | Raspberry Pi upper-computer app (Flask + WebRTC + OpenCV/MediaPipe) — see [`ugv_rpi/README.md`](./ugv_rpi/README.md) |
 | `ugv_rpi/voice/` | Persistent voice assistant (Moonshine ONNX ASR + phrase grammar) — installer: `ugv_rpi/install_voice.sh` |
 | `ugv_rpi/vlm_ctrl/` | VLM goal control: onboard Intern-Decision engine, verification stack, latency benchmark — installer: `ugv_rpi/install_vlm.sh` |
+| `agent/` | Embodied agent stack: hex validator, safety gates, VLM client, dashboard, learner — installer: `agent/install_agent.sh` |
+| `state_table.yaml` | Agent single source of truth: hex codebook (cross-checked against the instruction table), safety thresholds, tunables |
 | `wavego_pro_instruction_table.xlsx` / `.json` | Complete JSON command reference: 47 commands, feedback formats, unused/dead code audit |
 
 ## Robot Schematic
@@ -270,9 +274,38 @@ Then trigger it with `{"T":112,"func":6}`. Build and flash with PlatformIO (`pio
 | Voice assistant | `ugv_rpi/install_voice.sh` → `wavego-voice.service` | phrase grammar → `/api/cmd`, `/api/cv`, `/api/vlm` |
 | VLM goal control | `ugv_rpi/install_vlm.sh` → `wavego-vlm.service` | goal sessions → software-verified gait commands |
 | Failsafe watchdog | `ugv_rpi/install_failsafe.sh` → `wavego-failsafe.service` | post-mortem UART stop if the main app dies within the motion grace window (no reflash needed) |
+| Embodied agent | `agent/install_agent.sh` → `wavego-agent.service`, port 8000 | token-auth agent dashboard; loop + dashboard share one validator (single UART owner alongside `app.py` — run the agent **instead of**, not next to, direct-control sessions) |
 
 Full HTTP API reference (bypass API table): [`ugv_rpi/README.md`](ugv_rpi/README.md).
 Jupyter tutorials run at `:8888` (`tutorial_en/`, `tutorial_cn/`) — notebooks **30–31** cover the WAVEGO Pro HTTP API and realtime telemetry; notebooks **10, 11, 21** carry WAVEGO Pro notices (removed audio stack / unsupported line-following).
+
+## Embodied agent (`agent/`)
+
+A local autonomy stack built on one rule: **the model proposes, the validator disposes**. The VLM never emits robot commands — it selects 6-char hex state codes (`set_state` tool call), and the deterministic validator is the only component allowed to translate a code into ESP32 JSON and write it to the UART. Every decision is audit-logged.
+
+**Pipeline** (`agent/loop.py`, L0→L4 heartbeat): ingest (user text, missions, camera) → perceive (VLM frame describe) → deliberate (one tool call per cycle; arbitration Safety > user > mission > idle) → execute (tool dispatch) → outputs (JSONL cycle log). Failure ladder: retry with feedback, halt after repeated failures, halt on shutdown. `T:111` is level-based, so every motion path ends in `finally: halt`.
+
+**Safety layers** (each unit-tested, stdlib-only suites):
+- `validator.py` — hex→JSON translation, codebook/format/speed/transition gates, bad-code streak → forced halt, sqlite audit trail, thread-safe
+- `safety.py` — frozen-camera detection (dominant-hash + A,B,A loop), prompt-injection scan, verdict vocabulary, pre-motion checklist
+- `redteam_verdict.py` — 23 adversarial attacks (injection, verdict spoofing, frame loops) — 23/23 withstood
+- `test_fuzz.py` — seeded validator fuzzing (`python agent/test_fuzz.py 1337 10000`) — 0 violations
+
+**Codebook** (`state_table.yaml`): cross-checked against `wavego_pro_instruction_table.json` (firmware `Config.h` + `main.cpp`). Unverified codes (SIT, JUMP, …) are quarantined until you flip `verified: true` after physical testing. Note: `T:111` has no speed parameter, so WALK_SLOW emits the same JSON as WALK; there is no firmware wave function (the old `func:99` mapping was removed).
+
+**Learner** (`learner.py`): quarantine-first knowledge store on the same `state.db`. Observations land in the `learned` tier; promotion to the trusted `core` tier requires minimum trials, failure tilt below threshold, and value consistency. Hex-looking keys are refused promotion — learning can never grow the motion authority. Idle-time promotion runs inside the agent loop under a time budget + minimum interval (`learner:` section of `state_table.yaml`).
+
+**Dashboard** (port 8000): a window, not a door. Token auth (constant-time compare), live state + audit tail, WebSocket push — and exactly one write endpoint: **ESTOP**, which halts through the same validator instance and is deliberately exempt from rate limiting. Token is stored root-only in `/etc/wavego/agent.env` by the installer.
+
+**Install on the robot** (from `agent/`):
+
+    ./install_agent.sh                # generates token, installs wavego-agent.service
+    ./install_agent.sh --token X      # chosen token
+    ./install_agent.sh --check
+    ./install_agent.sh --uninstall
+    journalctl -u wavego-agent -f     # live logs
+
+**Run without installing** (dev): `python -m agent.serve --token dev --simulate` (no hardware), or `python -m agent.loop --simulate --once` for a single cycle. Tests: `python agent/test_validator.py && python agent/test_safety.py && python agent/test_learner.py && python agent/test_dashboard.py`.
 
 ## Camera Installation and Usage
 The RPi app auto-detects cameras at startup in this order: **USB → CSI → OAK (depthai)**.

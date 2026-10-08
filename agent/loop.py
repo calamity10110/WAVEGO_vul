@@ -37,8 +37,16 @@ MAX_CONSECUTIVE_FAILURES = 5
 
 class AgentLoop:
     def __init__(self, config_path="state_table.yaml", simulate=False,
-                 once=False, log_dir="logs"):
-        self.validator = Validator(config_path, simulate=simulate)
+                 once=False, log_dir="logs", validator=None, learner=None):
+        self._owns_validator = validator is None
+        self.validator = validator or Validator(config_path, simulate=simulate)
+        if learner is None:
+            import yaml
+            with open(config_path, "r", encoding="utf-8") as fh:
+                file_cfg = yaml.safe_load(fh) or {}
+            from .learner import Learner
+            learner = Learner(self.validator, file_cfg)
+        self.learner = learner
         self.model = VLModel(
             url="http://127.0.0.1:8080",
             timeout_s=120)
@@ -53,16 +61,22 @@ class AgentLoop:
         self.cycle_count = 0
 
     def run(self):
+        self.running = True
         self.outputs.log("info", "agent loop starting")
         try:
-            while True:
+            while self.running:
                 try:
                     self.run_once()
+                    self.learner.observe("cycle", "ok", source="loop",
+                                         outcome="ok")
+                    self.learner.idle_pass()
                     self.consecutive_failures = 0
                     if self.once:
                         break
                 except Exception as e:
                     self.consecutive_failures += 1
+                    self.learner.observe("cycle", f"error: {type(e).__name__}",
+                                         source="loop", outcome="fail")
                     self.outputs.log("error", f"cycle {self.cycle_count}: {e}")
                     try:
                         self.validator.halt(source="loop_guard")
@@ -76,8 +90,12 @@ class AgentLoop:
         except KeyboardInterrupt:
             self.outputs.log("info", "keyboard interrupt — halting")
         finally:
-            self.validator.halt(source="shutdown")
-            self.validator.close()
+            try:
+                self.validator.halt(source="shutdown")
+            except Exception:
+                pass
+            if self._owns_validator:
+                self.validator.close()
             self.outputs.log("info", f"agent loop stopped after {self.cycle_count} cycles")
 
     def run_once(self):
