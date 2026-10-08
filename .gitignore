@@ -1,1 +1,9 @@
 graphify-out/
+
+__pycache__/
+*.pyc
+logs/
+state.db
+releases/
+ugv_rpi/releases/
+*.tar.gz
