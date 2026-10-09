@@ -283,7 +283,7 @@ Jupyter tutorials run at `:8888` (`tutorial_en/`, `tutorial_cn/`) — notebooks 
 
 A local autonomy stack built on one rule: **the model proposes, the validator disposes**. The VLM never emits robot commands — it selects 6-char hex state codes (`set_state` tool call), and the deterministic validator is the only component allowed to translate a code into ESP32 JSON and write it to the UART. Every decision is audit-logged.
 
-**Pipeline** (`agent/loop.py`, L0→L4 heartbeat): ingest (user text, missions, camera) → perceive (VLM frame describe) → deliberate (one tool call per cycle; arbitration Safety > user > mission > idle) → execute (tool dispatch) → outputs (JSONL cycle log). Failure ladder: retry with feedback, halt after repeated failures, halt on shutdown. `T:111` is level-based, so every motion path ends in `finally: halt`.
+**Pipeline** (`agent/loop.py`, L0→L4 heartbeat): ingest (user text, missions, camera) → perceive (VLM frame describe) → deliberate (one tool call per cycle; arbitration Safety > user > mission > idle) → execute (tool dispatch) → outputs (JSONL cycle log). Failure ladder: retry with feedback, halt after repeated failures, halt on shutdown. `T:111` is level-based, so every motion path ends in `finally: halt`. Full input→process→output decision tree with per-node dependencies and functions: [`agent/DATAFLOW.md`](agent/DATAFLOW.md).
 
 **Safety layers** (each unit-tested, stdlib-only suites):
 - `validator.py` — hex→JSON translation, codebook/format/speed/transition gates, bad-code streak → forced halt, sqlite audit trail, thread-safe
