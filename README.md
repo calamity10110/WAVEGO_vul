@@ -299,11 +299,15 @@ A local autonomy stack built on one rule: **the model proposes, the validator di
 
 **Install on the robot** (from `agent/`):
 
-    ./install_agent.sh                # generates token, installs wavego-agent.service
-    ./install_agent.sh --token X      # chosen token
+    ./setup.sh                        # venv + deps + config sanity + self-test
+    ./run.sh --simulate               # dry run: full agent + dashboard, no hardware
+    ./run.sh                          # hardware mode (token auto-generated, printed once)
+    ./install_agent.sh                # optional: systemd autostart (wavego-agent.service)
     ./install_agent.sh --check
     ./install_agent.sh --uninstall
     journalctl -u wavego-agent -f     # live logs
+
+`run.sh` flags: `--token X` (or `AGENT_TOKEN` env), `--port N`, `--host H`, `--once` (single cycle, no dashboard), `--no-loop` (dashboard only, simulate — the main app keeps the UART). Ctrl-C always halts the robot and releases the port.
 
 **Run without installing** (dev): `python -m agent.serve --token dev --simulate` (no hardware), or `python -m agent.loop --simulate --once` for a single cycle. Tests: `python agent/test_validator.py && python agent/test_safety.py && python agent/test_learner.py && python agent/test_dashboard.py`.
 

@@ -21,7 +21,11 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
-VENV_PY="$REPO_ROOT/ugv_rpi/ugv-env/bin/python"
+if [ -x "$SCRIPT_DIR/agent-env/bin/python" ]; then
+    VENV_PY="$SCRIPT_DIR/agent-env/bin/python"
+else
+    VENV_PY="$REPO_ROOT/ugv_rpi/ugv-env/bin/python"
+fi
 UNIT_NAME="wavego-agent.service"
 UNIT_PATH="/etc/systemd/system/$UNIT_NAME"
 ENV_DIR="/etc/wavego"
@@ -30,7 +34,7 @@ ENV_FILE="$ENV_DIR/agent.env"
 die() { echo "ERROR: $*" >&2; exit 1; }
 
 [ -f "$REPO_ROOT/state_table.yaml" ] || die "state_table.yaml not found at $REPO_ROOT"
-[ -x "$VENV_PY" ] || die "venv python not found at $VENV_PY (run ugv_rpi/setup.sh first)"
+[ -x "$VENV_PY" ] || die "no venv python (run agent/setup.sh or ugv_rpi/setup.sh first)"
 
 write_unit() {
     echo "-- writing systemd unit $UNIT_PATH"
