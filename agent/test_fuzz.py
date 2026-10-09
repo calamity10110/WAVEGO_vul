@@ -55,10 +55,11 @@ HEX_CHARS = "0123456789ABCDEFabcdef"
 
 
 def make_validator():
-    fd, path = tempfile.mkstemp(suffix=".yaml")
-    with os.fdopen(fd, "w") as fh:
+    tmp = tempfile.TemporaryDirectory()
+    path = os.path.join(tmp.name, "state_table.yaml")
+    with open(path, "w") as fh:
         yaml.dump(DEFAULT_CFG, fh)
-    return Validator(path, simulate=True), path
+    return Validator(path, simulate=True), tmp
 
 
 def random_hex(rng):
@@ -82,7 +83,7 @@ def random_garbage(rng):
 
 def run(seed=1337, iterations=10000):
     rng = random.Random(seed)
-    v, path = make_validator()
+    v, tmp = make_validator()
 
     stats = {"accepted": 0, "rejected": 0, "violations": 0, "crashes": 0,
              "unexpected_state": 0}
@@ -129,7 +130,7 @@ def run(seed=1337, iterations=10000):
                 traceback.print_exc()
 
     v.close()
-    os.unlink(path)
+    tmp.cleanup()
 
     stats["total"] = iterations
     stats["seed"] = seed
