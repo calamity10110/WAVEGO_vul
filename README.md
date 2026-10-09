@@ -274,7 +274,7 @@ Then trigger it with `{"T":112,"func":6}`. Build and flash with PlatformIO (`pio
 | Voice assistant | `ugv_rpi/install_voice.sh` → `wavego-voice.service` | phrase grammar → `/api/cmd`, `/api/cv`, `/api/vlm` |
 | VLM goal control | `ugv_rpi/install_vlm.sh` → `wavego-vlm.service` | goal sessions → software-verified gait commands |
 | Failsafe watchdog | `ugv_rpi/install_failsafe.sh` → `wavego-failsafe.service` | post-mortem UART stop if the main app dies within the motion grace window (no reflash needed) |
-| Embodied agent | `agent/install_agent.sh` → `wavego-agent.service`, port 8000 | token-auth agent dashboard; loop + dashboard share one validator (single UART owner alongside `app.py` — run the agent **instead of**, not next to, direct-control sessions) |
+| Embodied agent | `agent/setup.sh` then `agent/run.sh` (or `agent/install_agent.sh` → `wavego-agent.service`), port 8000 | token-auth agent dashboard; loop + dashboard share one validator (single UART owner alongside `app.py` — run the agent **instead of**, not next to, direct-control sessions) |
 
 Full HTTP API reference (bypass API table): [`ugv_rpi/README.md`](ugv_rpi/README.md).
 Jupyter tutorials run at `:8888` (`tutorial_en/`, `tutorial_cn/`) — notebooks **30–31** cover the WAVEGO Pro HTTP API and realtime telemetry; notebooks **10, 11, 21** carry WAVEGO Pro notices (removed audio stack / unsupported line-following).

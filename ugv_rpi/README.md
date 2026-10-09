@@ -6,6 +6,8 @@ Flask + WebRTC + OpenCV/MediaPipe application that runs on the Raspberry Pi (Pi 
 
 The ESP32 lower computer lives in [`../wavego_pro_platformio/`](../wavego_pro_platformio/README.md). The full command protocol reference is [`../wavego_pro_instruction_table.xlsx`](../wavego_pro_instruction_table.xlsx) / `.json`.
 
+An alternative autonomy runtime also exists in [`../agent/`](../agent/DATAFLOW.md) — a VLM-driven agent whose dashboard and loop share one validator as a *second possible UART owner*. The UART supports one owner at a time: run the agent (`agent/run.sh`) **instead of** `app.py` for that session, not next to it. The failsafe daemon below watches only `app.py`; agent sessions are covered by `serve.py`'s own halt-on-exit (SIGTERM/Ctrl-C) plus the manual rules. See the [Embodied agent section](../README.md#embodied-agent-agent) in the root README.
+
 ## Usage
 
 ### Install (from a clean Raspberry Pi OS Bookworm)
