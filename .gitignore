@@ -7,3 +7,6 @@ state.db
 releases/
 ugv_rpi/releases/
 *.tar.gz
+
+# repowise local index + API keys (regenerate with: repowise init --yes --no-prose)
+.repowise/
