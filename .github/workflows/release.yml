@@ -1,0 +1,134 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+    branches: ['agent-architecture']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  agent-linux:
+    name: RPi5 upper stack (linux bundle)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: agent/requirements.txt
+
+      - name: Install agent + test deps
+        run: |
+          pip install -r agent/requirements.txt
+          pip install pytest pyyaml flask flask-socketio pyserial numpy
+
+      - name: Agent test suites
+        run: |
+          python agent/test_validator.py
+          python agent/test_safety.py
+          python agent/test_learner.py
+          python agent/test_dashboard.py
+          python agent/test_loop.py
+          python agent/test_fuzz.py 1337 5000
+          python agent/redteam_verdict.py
+
+      - name: ugv_rpi unit tests (pure subset; heavy Pi deps stubbed)
+        run: python -m pytest ugv_rpi/tests -q
+
+      - name: Package rpi5 bundle
+        run: |
+          VERSION="$(echo "${GITHUB_REF_NAME}" | sed 's/[^A-Za-z0-9._-]/-/g')"
+          STAGE="wavego-pro-${VERSION}-rpi5"
+          mkdir -p "dist/${STAGE}"
+          cp -r agent ugv_rpi state_table.yaml wavego_pro_instruction_table.json "dist/${STAGE}/"
+          find dist -type d -name '__pycache__' -prune -exec rm -rf {} +
+          find dist -type d -name '.pytest_cache' -prune -exec rm -rf {} +
+          find dist -type f -name '*.pyc' -delete
+          tar -czf "dist/${STAGE}.tar.gz" -C dist "${STAGE}"
+          sha256sum "dist/${STAGE}.tar.gz" > "dist/${STAGE}.tar.gz.sha256"
+          ls -la dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wavego-rpi5-bundle
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+
+  esp32-firmware:
+    name: ESP32 firmware (PlatformIO)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: wavego_pro_platformio/WAVEGO_Pro_PlatformIO
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Cache PlatformIO packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: pio-${{ runner.os }}-${{ hashFiles('wavego_pro_platformio/WAVEGO_Pro_PlatformIO/platformio.ini') }}
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Build (release)
+        run: pio run -e esp32dev
+
+      - name: Collect flashable artifacts + manifest
+        run: |
+          VERSION="$(echo "${GITHUB_REF_NAME}" | sed 's/[^A-Za-z0-9._-]/-/g')"
+          OUT="../../dist"
+          mkdir -p "${OUT}"
+          B=.pio/build/esp32dev
+          cp "${B}/bootloader.bin"   "${OUT}/wavego-esp32-${VERSION}-bootloader.bin"
+          cp "${B}/partitions.bin"   "${OUT}/wavego-esp32-${VERSION}-partitions.bin"
+          cp "${B}/boot_app0.bin"    "${OUT}/wavego-esp32-${VERSION}-boot_app0.bin"
+          cp "${B}/firmware.bin"     "${OUT}/wavego-esp32-${VERSION}-firmware.bin"
+          cp "${B}/firmware.elf"     "${OUT}/wavego-esp32-${VERSION}-firmware.elf"
+          cat > "${OUT}/wavego-esp32-${VERSION}-flash-manifest.txt" <<EOF
+          WAVEGO Pro ESP32 flash manifest (${VERSION})
+          Chip: ESP32 (esp32dev) — flash from the PC via Type-C, RPi UART disconnected.
+
+          esptool write_flash \\
+            0x1000  wavego-esp32-${VERSION}-bootloader.bin \\
+            0x8000  wavego-esp32-${VERSION}-partitions.bin \\
+            0xe000  wavego-esp32-${VERSION}-boot_app0.bin \\
+            0x10000 wavego-esp32-${VERSION}-firmware.bin
+          EOF
+          ls -la "${OUT}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wavego-esp32-firmware
+          path: dist/wavego-esp32-*
+
+  github-release:
+    name: GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [agent-linux, esp32-firmware]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
