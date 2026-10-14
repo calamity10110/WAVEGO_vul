@@ -37,7 +37,7 @@ The upper computer communicates with the lower computer (the robot's driver base
 ## Contents
 - [Robot Schematic](#robot-schematic)
 - [Command Reference](#command-reference)
-- [Install from the v0.1.0 release](#install-from-the-v010-release-recommended)
+- [Install from the release](#install-from-the-release-recommended)
 - [Install from source](#install-from-source-alternative)
 - [What differs from the stock Waveshare build](#what-differs-from-the-stock-waveshare-build)
 - [Usage](#usage)
@@ -121,23 +121,27 @@ Every command is one JSON object with a `"T"` type field. Full reference with pa
 - **`wavego_pro_instruction_table.json`** — same data, machine-readable
 - Waveshare wiki: [JSON Command Set](https://www.waveshare.com/wiki/WAVEGO_Pro#JSON_Command_Set) (documents the T:101–107 basics)
 
-## Install from the v0.1.0 release (recommended)
+## Install from the release (recommended)
 
 Prebuilt, CI-tested artifacts — no compilation, no dependency hunting. Download them from the
-[v0.1.0 release page](https://github.com/calamity10110/WAVEGO_vul/releases/tag/v0.1.0).
+[latest release page](https://github.com/calamity10110/WAVEGO_vul/releases/latest) and set the
+tag once (the examples below use it everywhere):
+
+    V=v0.1.1        # check the latest tag on the releases page
 
 ### 1. Flash the ESP32 mainboard (from a PC)
 
 Disconnect the Raspberry Pi UART from the mainboard first (the upload fails with
 "Failed to connect to ESP32" otherwise), connect the mainboard to the PC via USB Type-C,
-then flash with the offsets from `wavego-esp32-v0.1.0-flash-manifest.txt`:
+then flash the four release binaries with the offsets from
+`wavego-esp32-${V}-flash-manifest.txt` (shipped in every release):
 
     pip install esptool
     esptool.py --chip esp32 --port /dev/ttyUSB0 write_flash \
-      0x1000  wavego-esp32-v0.1.0-bootloader.bin \
-      0x8000  wavego-esp32-v0.1.0-partitions.bin \
-      0xe000  wavego-esp32-v0.1.0-boot_app0.bin \
-      0x10000 wavego-esp32-v0.1.0-firmware.bin
+      0x1000  wavego-esp32-${V}-bootloader.bin \
+      0x8000  wavego-esp32-${V}-partitions.bin \
+      0xe000  wavego-esp32-${V}-boot_app0.bin \
+      0x10000 wavego-esp32-${V}-firmware.bin
 
 (Use `COM3` etc. on Windows instead of `/dev/ttyUSB0`.) Reconnect the Pi UART afterwards.
 This firmware is built on Arduino core 3.x — the stock Waveshare firmware is 2.x-era, so
@@ -145,12 +149,13 @@ flashing back to stock later requires a full reflash, not an incremental update.
 
 ### 2. Set up the Raspberry Pi
 
-On a clean Raspberry Pi OS (Bookworm), with the camera ribbon connected:
+On a clean Raspberry Pi OS (Bookworm), with the camera ribbon connected, download
+`wavego-pro-${V}-rpi5.tar.gz` and its `.sha256` from the release page to the Pi, then:
 
     # on the Pi
-    sha256sum -c wavego-pro-v0.1.0-rpi5.tar.gz.sha256   # verify the download
-    tar -xzf wavego-pro-v0.1.0-rpi5.tar.gz              # -> wavego-pro-v0.1.0-rpi5/
-    cd wavego-pro-v0.1.0-rpi5/ugv_rpi/
+    sha256sum -c wavego-pro-${V}-rpi5.tar.gz.sha256   # verify the download
+    tar -xzf wavego-pro-${V}-rpi5.tar.gz              # -> wavego-pro-${V}-rpi5/
+    cd wavego-pro-${V}-rpi5/ugv_rpi/
     sudo chmod +x setup.sh autorun.sh
     sudo ./setup.sh        # venv + requirements + services (takes a while)
     ./autorun.sh           # enable boot autorun
@@ -160,11 +165,12 @@ On a clean Raspberry Pi OS (Bookworm), with the camera ribbon connected:
 
 The bundle contains the full `agent/` + `ugv_rpi/` trees, `state_table.yaml`, and the
 instruction table, so after extraction every installer below works from the bundle —
-no `git clone` needed. Continue at [Usage](#usage).
+no `git clone` needed. For the embodied agent: `cd ../agent && ./setup.sh && ./run.sh --simulate`.
+Continue at [Usage](#usage).
 
 ## Install from source (alternative)
 
-**Option A — prebuilt image (recommended for first use):** flash the official WAVEGO image with Raspberry Pi Imager ([download](https://drive.google.com/file/d/1fQcucuv19uY6qhOVKPc3t1JqV-zLIHE-/view), tutorial: [Product Assembly and RPi Environment Configuration](https://www.waveshare.com/wiki/WAVEGO_Pro-Product_Assembly_and_Raspberry_Pi_Environment_Configuration)). Everything below is already installed and configured.
+**Option A — stock Waveshare image:** flash the official WAVEGO image with Raspberry Pi Imager ([download](https://drive.google.com/file/d/1fQcucuv19uY6qhOVKPc3t1JqV-zLIHE-/view), tutorial: [Product Assembly and RPi Environment Configuration](https://www.waveshare.com/wiki/WAVEGO_Pro-Product_Assembly_and_Raspberry_Pi_Environment_Configuration)). Everything below is already installed and configured — but it ships the stock firmware and none of this fork's additions.
 
 **Option B — from source on a clean Raspberry Pi OS (Bookworm):**
 
