@@ -8,6 +8,6 @@ state.db
 releases/
 ugv_rpi/releases/
 *.tar.gz
-
+*.pytest_cache
 # repowise local index + API keys (regenerate with: repowise init --yes --no-prose)
 .repowise/
