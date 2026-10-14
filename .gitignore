@@ -1,5 +1,6 @@
 graphify-out/
-
+.sisyphus
+.vscode
 __pycache__/
 *.pyc
 logs/
