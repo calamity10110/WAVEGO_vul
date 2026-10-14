@@ -48,9 +48,9 @@ bool ina219_overflow = false;
 
 void InitINA219(){
   ina219.init();
-  ina219.setADCMode(BIT_MODE_9);
-  ina219.setPGain(PG_320);
-  ina219.setBusRange(BRNG_16);
+  ina219.setADCMode(INA219_BIT_MODE_9);
+  ina219.setPGain(INA219_PG_320);
+  ina219.setBusRange(INA219_BRNG_16);
   ina219.setShuntSizeInOhms(0.01); // used in INA219.
 }
 
