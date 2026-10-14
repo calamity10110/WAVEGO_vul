@@ -145,14 +145,14 @@ bool isKnownMac(const uint8_t *mac) {
     return false;
 }
 
-void OnDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len) {
+void OnDataRecv(const esp_now_recv_info *info, const uint8_t *data, int data_len) {
     if (!espnowMode) {
         Serial.println("ESP-NOW is off, skip receiving data");
         return;
     }
 
     if (receivedFromKnownMac) {
-        if (!isKnownMac(mac_addr)) {
+        if (!isKnownMac(info->src_addr)) {
             // Serial.println("Received data from unknown MAC address, skip processing");
             // Serial0.println("Received data from unknown MAC address, skip processing");
             return;
@@ -225,12 +225,8 @@ String Wireless::macToString(uint8_t mac[6]) {
 
 uint8_t* Wireless::getMac() {
     static uint8_t mac[6];
-    if (esp_efuse_mac_get_default(mac) == ESP_OK) {
-        return mac;
-    } else {
-        Serial.println("Failed to get MAC address");
-        return nullptr;
-    }
+    WiFi.macAddress(mac);
+    return mac;
 }
 
 void Wireless::macStringToByteArray(const String& macString, uint8_t* byteArray) {

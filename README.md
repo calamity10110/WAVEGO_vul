@@ -1,6 +1,6 @@
-![GitHub top language](https://img.shields.io/github/languages/top/effectsmachine/WAVEGO_Pro) ![GitHub language count](https://img.shields.io/github/languages/count/effectsmachine/WAVEGO_Pro)
-![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/effectsmachine/WAVEGO_Pro)
-![GitHub repo size](https://img.shields.io/github/repo-size/effectsmachine/WAVEGO_Pro) ![GitHub](https://img.shields.io/github/license/effectsmachine/WAVEGO_Pro) ![GitHub last commit](https://img.shields.io/github/last-commit/effectsmachine/WAVEGO_Pro)
+![GitHub top language](https://img.shields.io/github/languages/top/calamity10110/WAVEGO_vul) ![GitHub language count](https://img.shields.io/github/languages/count/calamity10110/WAVEGO_vul)
+![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/calamity10110/WAVEGO_vul)
+![GitHub repo size](https://img.shields.io/github/repo-size/calamity10110/WAVEGO_vul) ![GitHub](https://img.shields.io/github/license/calamity10110/WAVEGO_vul) ![GitHub last commit](https://img.shields.io/github/last-commit/calamity10110/WAVEGO_vul)
 
 # Waveshare Bionic Dog-Like Robot
 Open Source for ESP32 And PI5/PI4B.
@@ -36,7 +36,10 @@ The upper computer communicates with the lower computer (the robot's driver base
 ## Contents
 - [Robot Schematic](#robot-schematic)
 - [Command Reference](#command-reference)
-- [Install on the Raspberry Pi](#install-on-the-raspberry-pi)
+- [Install from the v0.1.0 release](#install-from-the-v010-release-recommended)
+- [Install from source](#install-from-source-alternative)
+- [What differs from the stock Waveshare build](#what-differs-from-the-stock-waveshare-build)
+- [Usage](#usage)
 - [Connect the Raspberry Pi to the ESP32 Mainboard](#connect-the-raspberry-pi-to-the-esp32-mainboard)
 - [Sending Commands](#sending-commands)
 - [Creating Custom Actions](#creating-custom-actions)
@@ -114,7 +117,48 @@ Every command is one JSON object with a `"T"` type field. Full reference with pa
 - **`wavego_pro_instruction_table.json`** — same data, machine-readable
 - Waveshare wiki: [JSON Command Set](https://www.waveshare.com/wiki/WAVEGO_Pro#JSON_Command_Set) (documents the T:101–107 basics)
 
-## Install on the Raspberry Pi
+## Install from the v0.1.0 release (recommended)
+
+Prebuilt, CI-tested artifacts — no compilation, no dependency hunting. Download them from the
+[v0.1.0 release page](https://github.com/calamity10110/WAVEGO_vul/releases/tag/v0.1.0).
+
+### 1. Flash the ESP32 mainboard (from a PC)
+
+Disconnect the Raspberry Pi UART from the mainboard first (the upload fails with
+"Failed to connect to ESP32" otherwise), connect the mainboard to the PC via USB Type-C,
+then flash with the offsets from `wavego-esp32-v0.1.0-flash-manifest.txt`:
+
+    pip install esptool
+    esptool.py --chip esp32 --port /dev/ttyUSB0 write_flash \
+      0x1000  wavego-esp32-v0.1.0-bootloader.bin \
+      0x8000  wavego-esp32-v0.1.0-partitions.bin \
+      0xe000  wavego-esp32-v0.1.0-boot_app0.bin \
+      0x10000 wavego-esp32-v0.1.0-firmware.bin
+
+(Use `COM3` etc. on Windows instead of `/dev/ttyUSB0`.) Reconnect the Pi UART afterwards.
+This firmware is built on Arduino core 3.x — the stock Waveshare firmware is 2.x-era, so
+flashing back to stock later requires a full reflash, not an incremental update.
+
+### 2. Set up the Raspberry Pi
+
+On a clean Raspberry Pi OS (Bookworm), with the camera ribbon connected:
+
+    # on the Pi
+    sha256sum -c wavego-pro-v0.1.0-rpi5.tar.gz.sha256   # verify the download
+    tar -xzf wavego-pro-v0.1.0-rpi5.tar.gz              # -> wavego-pro-v0.1.0-rpi5/
+    cd wavego-pro-v0.1.0-rpi5/ugv_rpi/
+    sudo chmod +x setup.sh autorun.sh
+    sudo ./setup.sh        # venv + requirements + services (takes a while)
+    ./autorun.sh           # enable boot autorun
+    cd AccessPopup && sudo chmod +x installconfig.sh && sudo ./installconfig.sh
+    #   -> 1 (install), any key, 9 (exit)
+    sudo reboot
+
+The bundle contains the full `agent/` + `ugv_rpi/` trees, `state_table.yaml`, and the
+instruction table, so after extraction every installer below works from the bundle —
+no `git clone` needed. Continue at [Usage](#usage).
+
+## Install from source (alternative)
 
 **Option A — prebuilt image (recommended for first use):** flash the official WAVEGO image with Raspberry Pi Imager ([download](https://drive.google.com/file/d/1fQcucuv19uY6qhOVKPc3t1JqV-zLIHE-/view), tutorial: [Product Assembly and RPi Environment Configuration](https://www.waveshare.com/wiki/WAVEGO_Pro-Product_Assembly_and_Raspberry_Pi_Environment_Configuration)). Everything below is already installed and configured.
 
@@ -166,6 +210,68 @@ If the program fails to run and encounters errors related to v4l2.py during runt
     sudo rm /home/[your_user_name]/.local/lib/python3.11/site-packages/v4l2.py  
 
 Now you can restart the main program app.py.
+
+## What differs from the stock Waveshare build
+
+This repo is a fork of Waveshare's `WAVEGO_Pro`, rebuilt around a release pipeline and an
+embodied-agent upper stack. If you know the stock build, these are the deltas:
+
+**ESP32 firmware** (`wavego_pro_platformio/`)
+- Built with PlatformIO on Arduino core 3.x (pinned pioarduino `53.03.13`) instead of the
+  stock Arduino-IDE 2.x-era firmware. The prebuilt `.bin` files in the release are built
+  with this core — same one, no surprises.
+- ESP-NOW receive path hardened: zero-fill + bounded `memcpy` (`ESPNOW_HARDENING`, default
+  on) and an optional sender-MAC allowlist (`receivedFromKnownMac`).
+- `getMac()` reads the WiFi interface MAC; INA219 power-monitor calls use the current
+  `INA219_WE` API.
+
+**Raspberry Pi app** (`ugv_rpi/`) — an extended fork of the stock web app:
+- Telemetry tab: realtime joint positions (T:106 @ 1 Hz), battery, host sensors, host/client
+  error rings, VLM session log.
+- Optional systemd services: voice assistant (Moonshine ONNX + phrase grammar,
+  `install_voice.sh`), VLM goal control (Intern-Decision engine, `install_vlm.sh`),
+  failsafe watchdog daemon (`install_failsafe.sh`).
+- Gait-based line following (the stock wheeled-robot `T:13` pipeline stays disabled) and
+  person following with a video-stall watchdog.
+- Wheel-vehicle / RaspRover / arm code paths are commented out with `[WAVEGO Pro]` markers
+  (search the string to restore them).
+
+**Embodied agent** (`agent/`) — entirely new, not in the stock repo: a VLM proposes 6-char
+hex state codes and a deterministic validator is the sole motion authority (SQLite audit
+trail, token-auth dashboard on `:8000` with an ESTOP-only write endpoint).
+
+**Release engineering** — the stock repo ships no prebuilt artifacts. Here, every `v*`
+tag builds the ESP32 firmware and the Pi bundle in CI and publishes them as a GitHub
+Release with SHA-256 checksums, so the robot can be flashed and set up without compiling
+anything.
+
+## Usage
+
+### First boot
+1. Power the robot with the ESP32 flashed and the Pi set up. The OLED shows boot lines:
+   `E` = Ethernet IP (or No Ethernet), `W` = wireless mode, `F/J` = ports
+   (`5000` web UI, `8888` JupyterLab), `STA` = WiFi station info.
+2. If the Pi finds no known WiFi, it opens the `AccessPopup` hotspot (`1234567890`) —
+   join it from a phone/PC and open `192.168.50.5:5000`. Otherwise open
+   `http://<robot-ip>:5000`.
+
+### Everyday control
+- **Web UI** (`:5000`) — Control pad, Dashboard, Telemetry, Joystick, Gait tuning,
+  Settings, Photos/Videos; the JSON console sends raw commands to the ESP32.
+- **Agent dashboard** (`:8000`, token printed on first `agent/run.sh`) — start/stop the
+  embodied agent, watch the audit tail, ESTOP.
+- **Voice** (after `install_voice.sh`) — *forward / back / turn left / turn right /
+  stop*, *follow me*, *find the ball*.
+- **JupyterLab** (`:8888`) — notebooks 30–31 walk through the HTTP bypass API and
+  realtime telemetry.
+
+### Safety before the first walk
+- `T:111` gait commands are level-based: the ESP32 keeps executing the last one until a
+  new command arrives. If the controlling process dies mid-walk, the robot keeps walking —
+  the only stop is the power switch. Read the failsafe section in
+  [`ugv_rpi/README.md`](ugv_rpi/README.md#known-limitation-motion-commands-outlive-the-controlling-process)
+  and install the failsafe daemon (`ugv_rpi/install_failsafe.sh`).
+- First tests on a stand (belly supported, feet off the ground), then on a leash.
 
 ## Connect the Raspberry Pi to the ESP32 Mainboard
 The RPi talks to the ESP32 lower computer over a 3-wire UART link using the mainboard's 2×5P expansion port:
