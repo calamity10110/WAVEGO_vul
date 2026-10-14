@@ -1,4 +1,5 @@
 {
+  "$schema": "https://opencode.ai/config.json",
   "mcp": {
     "repowise": {
       "type": "local",
@@ -9,7 +10,8 @@
         "--transport",
         "stdio"
       ],
-      "enabled": true
+      "enabled": true,
+      "timeout": 300000
     }
   }
 }
