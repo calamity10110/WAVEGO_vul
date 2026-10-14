@@ -45,7 +45,8 @@ jobs:
           VERSION="$(echo "${GITHUB_REF_NAME}" | sed 's/[^A-Za-z0-9._-]/-/g')"
           STAGE="wavego-pro-${VERSION}-rpi5"
           mkdir -p "dist/${STAGE}"
-          cp -r agent ugv_rpi state_table.yaml wavego_pro_instruction_table.json "dist/${STAGE}/"
+          cp -r agent ugv_rpi state_table.yaml wavego_pro_instruction_table.json \
+                wavego_pro_instruction_table.xlsx README.md LICENSE "dist/${STAGE}/"
           find dist -type d -name '__pycache__' -prune -exec rm -rf {} +
           find dist -type d -name '.pytest_cache' -prune -exec rm -rf {} +
           find dist -type f -name '*.pyc' -delete

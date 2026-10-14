@@ -163,8 +163,9 @@ On a clean Raspberry Pi OS (Bookworm), with the camera ribbon connected, downloa
     #   -> 1 (install), any key, 9 (exit)
     sudo reboot
 
-The bundle contains the full `agent/` + `ugv_rpi/` trees, `state_table.yaml`, and the
-instruction table, so after extraction every installer below works from the bundle —
+The bundle is self-documenting: it contains the full `agent/` + `ugv_rpi/` trees, the
+complete 47-command reference (`.json` + `.xlsx`), `state_table.yaml`, this README, and
+the LICENSE — so after extraction every installer below works from the bundle, offline,
 no `git clone` needed. For the embodied agent: `cd ../agent && ./setup.sh && ./run.sh --simulate`.
 Continue at [Usage](#usage).
 
