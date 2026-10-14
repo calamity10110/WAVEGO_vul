@@ -25,7 +25,7 @@ jobs:
       - name: Install agent + test deps
         run: |
           pip install -r agent/requirements.txt
-          pip install pytest pyyaml flask flask-socketio pyserial numpy
+          pip install pytest pyyaml flask flask-socketio pyserial numpy requests
 
       - name: Agent test suites
         run: |
@@ -97,7 +97,11 @@ jobs:
           B=.pio/build/esp32dev
           cp "${B}/bootloader.bin"   "${OUT}/wavego-esp32-${VERSION}-bootloader.bin"
           cp "${B}/partitions.bin"   "${OUT}/wavego-esp32-${VERSION}-partitions.bin"
-          cp "${B}/boot_app0.bin"    "${OUT}/wavego-esp32-${VERSION}-boot_app0.bin"
+          BOOT_APP0="${B}/boot_app0.bin"
+          if [ ! -f "${BOOT_APP0}" ]; then
+            BOOT_APP0="$HOME/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin"
+          fi
+          cp "${BOOT_APP0}"          "${OUT}/wavego-esp32-${VERSION}-boot_app0.bin"
           cp "${B}/firmware.bin"     "${OUT}/wavego-esp32-${VERSION}-firmware.bin"
           cp "${B}/firmware.elf"     "${OUT}/wavego-esp32-${VERSION}-firmware.elf"
           cat > "${OUT}/wavego-esp32-${VERSION}-flash-manifest.txt" <<EOF
