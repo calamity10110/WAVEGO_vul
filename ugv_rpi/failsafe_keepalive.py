@@ -25,8 +25,6 @@ import json
 import logging
 import time
 
-import requests
-
 LOG = logging.getLogger("wavego-failsafe")
 
 POLL_INTERVAL_S = 1.0
@@ -76,6 +74,7 @@ def send_stop_direct(uart):
 
 
 def main(app_url="http://127.0.0.1:5000/api/status"):
+    import requests  # lazy: only the poll loop needs it; keeps decide() importable without the dep
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s [failsafe] %(levelname)s %(message)s")
     session = requests.Session()
