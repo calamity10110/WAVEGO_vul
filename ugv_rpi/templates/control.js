@@ -16,92 +16,95 @@ var detect_type, led_mode, detect_react, picture_size, video_size, cpu_load;
 var cpu_temp, ram_usage, pan_angle, tilt_angle, wifi_rssi, base_voltage, video_fps;
 var cv_movtion_mode;
 
+function applyConfig(yamlObject) {
+  console.log(yamlObject);
+  cmd_movition_ctrl = yamlObject.cmd_config.cmd_movition_ctrl;
+  cmd_gimbal_steady = yamlObject.cmd_config.cmd_gimbal_steady;
+  cmd_gimbal_ctrl = yamlObject.cmd_config.cmd_gimbal_ctrl;
+  cmd_arm_ctrl_ui = yamlObject.cmd_config.cmd_arm_ctrl_ui;
+
+  max_speed = yamlObject.args_config.max_speed;
+  slow_speed = yamlObject.args_config.slow_speed;
+  robot_name = yamlObject.base_config.robot_name;
+
+  max_rate  = yamlObject.args_config.max_rate;
+  mid_rate  = yamlObject.args_config.mid_rate;
+  min_rate  = yamlObject.args_config.min_rate;
+  arm_default_e = yamlObject.args_config.arm_default_e;
+  arm_default_z = yamlObject.args_config.arm_default_z;
+  arm_default_r = yamlObject.args_config.arm_default_r;
+  armZ = arm_default_z; 
+  armR = arm_default_r;
+  armE = arm_default_e;
+
+  main_type = yamlObject.base_config.main_type;
+  module_type = yamlObject.base_config.module_type;
+
+  max_res = yamlObject.code.max_res;
+  mid_res = yamlObject.code.mid_res;
+  min_res = yamlObject.code.min_res;
+
+  zoom_x1 = yamlObject.code.zoom_x1;
+  zoom_x2 = yamlObject.code.zoom_x2;
+  zoom_x4 = yamlObject.code.zoom_x4;
+
+  pic_cap = yamlObject.code.pic_cap;
+  vid_sta = yamlObject.code.vid_sta;
+  vid_end = yamlObject.code.vid_end;
+
+  mc_lock = yamlObject.code.mc_lock;
+  mc_unlo = yamlObject.code.mc_unlo;
+
+  cv_none = yamlObject.code.cv_none;
+  cv_moti = yamlObject.code.cv_moti;
+  cv_face = yamlObject.code.cv_face;
+  cv_objs = yamlObject.code.cv_objs;
+  cv_clor = yamlObject.code.cv_clor;
+  mp_hand = yamlObject.code.mp_hand;
+  // // [WAVEGO Pro] disabled: line-follow needs T:13 (unsupported)
+  // cv_auto = yamlObject.code.cv_auto;
+  mp_face = yamlObject.code.mp_face;
+  mp_pose = yamlObject.code.mp_pose;
+  if (yamlObject.code.cv_person !== undefined) {
+    cv_person = yamlObject.code.cv_person;
+  }
+  if (yamlObject.code.cv_line !== undefined) {
+    cv_line = yamlObject.code.cv_line;
+  }
+
+  re_none = yamlObject.code.re_none;
+  re_capt = yamlObject.code.re_capt;
+  re_reco = yamlObject.code.re_reco;
+  led_off = yamlObject.code.led_off;
+  led_aut = yamlObject.code.led_aut;
+  led_ton = yamlObject.code.led_ton;
+  head_ct = yamlObject.code.head_ct;
+
+  detect_type = yamlObject.fb.detect_type;
+  led_mode    = yamlObject.fb.led_mode;
+  detect_react= yamlObject.fb.detect_react;
+  picture_size= yamlObject.fb.picture_size;
+  video_size  = yamlObject.fb.video_size;
+  cpu_load    = yamlObject.fb.cpu_load;
+  cpu_temp    = yamlObject.fb.cpu_temp;
+  ram_usage   = yamlObject.fb.ram_usage;
+  pan_angle   = yamlObject.fb.pan_angle;
+  tilt_angle  = yamlObject.fb.tilt_angle;
+  wifi_rssi   = yamlObject.fb.wifi_rssi;
+  base_voltage= yamlObject.fb.base_voltage;
+  video_fps   = yamlObject.fb.video_fps;
+  cv_movtion_mode = yamlObject.fb.cv_movtion_mode;
+
+  if (robot_name) {
+    document.title = robot_name + " WEB CTRL";
+  }
+}
+
 fetch('/config')
   .then(response => response.text())
   .then(yamlText => {
     try {
-      const yamlObject = jsyaml.load(yamlText);
-      console.log(yamlObject);
-      cmd_movition_ctrl = yamlObject.cmd_config.cmd_movition_ctrl;
-      cmd_gimbal_steady = yamlObject.cmd_config.cmd_gimbal_steady;
-      cmd_gimbal_ctrl = yamlObject.cmd_config.cmd_gimbal_ctrl;
-      cmd_arm_ctrl_ui = yamlObject.cmd_config.cmd_arm_ctrl_ui;
-
-      max_speed = yamlObject.args_config.max_speed;
-      slow_speed = yamlObject.args_config.slow_speed;
-      robot_name = yamlObject.base_config.robot_name;
-
-      max_rate  = yamlObject.args_config.max_rate;
-      mid_rate  = yamlObject.args_config.mid_rate;
-      min_rate  = yamlObject.args_config.min_rate;
-      arm_default_e = yamlObject.args_config.arm_default_e;
-      arm_default_z = yamlObject.args_config.arm_default_z;
-      arm_default_r = yamlObject.args_config.arm_default_r;
-      armZ = arm_default_z; 
-      armR = arm_default_r;
-      armE = arm_default_e;
-
-      main_type = yamlObject.base_config.main_type;
-      module_type = yamlObject.base_config.module_type;
-
-      max_res = yamlObject.code.max_res;
-      mid_res = yamlObject.code.mid_res;
-      min_res = yamlObject.code.min_res;
-
-      zoom_x1 = yamlObject.code.zoom_x1;
-      zoom_x2 = yamlObject.code.zoom_x2;
-      zoom_x4 = yamlObject.code.zoom_x4;
-
-      pic_cap = yamlObject.code.pic_cap;
-      vid_sta = yamlObject.code.vid_sta;
-      vid_end = yamlObject.code.vid_end;
-
-      mc_lock = yamlObject.code.mc_lock;
-      mc_unlo = yamlObject.code.mc_unlo;
-
-      cv_none = yamlObject.code.cv_none;
-      cv_moti = yamlObject.code.cv_moti;
-      cv_face = yamlObject.code.cv_face;
-      cv_objs = yamlObject.code.cv_objs;
-      cv_clor = yamlObject.code.cv_clor;
-      mp_hand = yamlObject.code.mp_hand;
-      // // [WAVEGO Pro] disabled: line-follow needs T:13 (unsupported)
-      // cv_auto = yamlObject.code.cv_auto;
-      mp_face = yamlObject.code.mp_face;
-      mp_pose = yamlObject.code.mp_pose;
-      if (yamlObject.code.cv_person !== undefined) {
-        cv_person = yamlObject.code.cv_person;
-      }
-      if (yamlObject.code.cv_line !== undefined) {
-        cv_line = yamlObject.code.cv_line;
-      }
-
-      re_none = yamlObject.code.re_none;
-      re_capt = yamlObject.code.re_capt;
-      re_reco = yamlObject.code.re_reco;
-      led_off = yamlObject.code.led_off;
-      led_aut = yamlObject.code.led_aut;
-      led_ton = yamlObject.code.led_ton;
-      head_ct = yamlObject.code.head_ct;
-
-      detect_type = yamlObject.fb.detect_type;
-      led_mode    = yamlObject.fb.led_mode;
-      detect_react= yamlObject.fb.detect_react;
-      picture_size= yamlObject.fb.picture_size;
-      video_size  = yamlObject.fb.video_size;
-      cpu_load    = yamlObject.fb.cpu_load;
-      cpu_temp    = yamlObject.fb.cpu_temp;
-      ram_usage   = yamlObject.fb.ram_usage;
-      pan_angle   = yamlObject.fb.pan_angle;
-      tilt_angle  = yamlObject.fb.tilt_angle;
-      wifi_rssi   = yamlObject.fb.wifi_rssi;
-      base_voltage= yamlObject.fb.base_voltage;
-      video_fps   = yamlObject.fb.video_fps;
-      cv_movtion_mode = yamlObject.fb.cv_movtion_mode;
-
-      if (robot_name) {
-        document.title = robot_name + " WEB CTRL";
-      }
+      applyConfig(jsyaml.load(yamlText));
     } catch (e) {
       console.error('Error parsing YAML file:', e);
     }

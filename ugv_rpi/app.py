@@ -139,13 +139,15 @@ CV_MODE_NAMES = {
 cmd_feedback_actions = [f['code']['cv_none'], f['code']['cv_moti'],
                         f['code']['cv_face'], f['code']['cv_objs'],
                         f['code']['cv_clor'], f['code']['mp_hand'],
-                        f['code']['cv_auto'], f['code']['mp_face'],
+                        f['code']['mp_face'],
                         f['code']['mp_pose'], f['code']['re_none'],
                         f['code']['re_capt'], f['code']['re_reco'],
                         f['code']['mc_lock'], f['code']['mc_unlo'],
                         f['code']['led_off'], f['code']['led_aut'],
                         f['code']['led_ton'], f['code']['head_ct']
                         ]
+if 'cv_auto' in f['code']:
+    cmd_feedback_actions.append(f['code']['cv_auto'])
 
 if 'cv_person' in f['code']:
     cmd_feedback_actions.append(f['code']['cv_person'])
@@ -306,72 +308,91 @@ def set_version(input_main, input_module):
     elif input_module == 2:
         cvf.info_update("PT", (0,255,255), 0.36)
 
-# main cmdline for robot ctrl
-def cmdline_ctrl(args_string):
-    if not args_string:
-        return
-    args = args_string.split()
+def _cmd_base(args):
     # base -c {"T":1,"L":0.5,"R":0.5}
-    if args[0] == 'base':
-        if args[1] == '-c' or args[1] == '--cmd':
-            base.base_json_ctrl(json.loads(args[2]))
-        elif args[1] == '-r' or args[1] == '--recv':
-            if args[2] == 'on':
-                cvf.show_recv_info(True)
-            else:
-                cvf.show_recv_info(False)
-
-    elif args[0] == 'send':
-        if args[1] == '-a' or args[1] == '--add':
-            if args[2] == '-b' or args[2] == '--broadcast':
-                base.base_json_ctrl({"T":303,"mac":"FF:FF:FF:FF:FF:FF"})
-            else:
-                base.base_json_ctrl({"T":303,"mac":args[2]})
-        elif args[1] == '-rm' or args[1] == '--remove':
-            if args[2] == '-b' or args[2] == '--broadcast':
-                base.base_json_ctrl({"T":304,"mac":"FF:FF:FF:FF:FF:FF"})
-            else:
-                base.base_json_ctrl({"T":304,"mac":args[2]})
-        elif args[1] == '-b' or args[1] == '--broadcast':
-            base.base_json_ctrl({"T":306,"mac":"FF:FF:FF:FF:FF:FF","dev":0,"b":0,"s":0,"e":0,"h":0,"cmd":3,"megs":' '.join(args[2:])})
-        elif args[1] == '-g' or args[1] == '--group':
-            base.base_json_ctrl({"T":305,"dev":0,"b":0,"s":0,"e":0,"h":0,"cmd":3,"megs":' '.join(args[2:])})
+    if len(args) < 2:
+        return
+    if args[1] == '-c' or args[1] == '--cmd':
+        if len(args) < 3:
+            return
+        base.base_json_ctrl(json.loads(args[2]))
+    elif args[1] == '-r' or args[1] == '--recv':
+        if len(args) < 3:
+            return
+        if args[2] == 'on':
+            cvf.show_recv_info(True)
         else:
-            base.base_json_ctrl({"T":306,"mac":args[1],"dev":0,"b":0,"s":0,"e":0,"h":0,"cmd":3,"megs":' '.join(args[2:])})
+            cvf.show_recv_info(False)
 
-    elif args[0] == 'cv':
-        if args[1] == '-r' or args[1] == '--range':
-            try:
-                lower_trimmed = args[2].strip("[]")
-                lower_nums = [int(lower_num) for lower_num in lower_trimmed.split(",")]
-                if all(0 <= num <= 255 for num in lower_nums):
-                    pass
-                else:
-                    return
-            except:
-                return
-            try:
-                upper_trimmed = args[3].strip("[]")
-                upper_nums = [int(upper_num) for upper_num in upper_trimmed.split(",")]
-                if all(0 <= num <= 255 for num in upper_nums):
-                    pass
-                else:
-                    return
-            except:
-                return
-            cvf.change_target_color(lower_nums, upper_nums)
-        elif args[1] == '-s' or args[1] == '--select':
-            cvf.selet_target_color(args[2])
 
-    elif args[0] == 'video' or args[0] == 'v':
-        if args[1] == '-q' or args[1] == '--quality':
-            try:
-                int(args[2])
-            except:
-                return
-            cvf.set_video_quality(int(args[2]))
+def _cmd_send(args):
+    if len(args) < 2:
+        return
+    if args[1] == '-a' or args[1] == '--add':
+        if len(args) < 3:
+            return
+        if args[2] == '-b' or args[2] == '--broadcast':
+            base.base_json_ctrl({"T":303,"mac":"FF:FF:FF:FF:FF:FF"})
+        else:
+            base.base_json_ctrl({"T":303,"mac":args[2]})
+    elif args[1] == '-rm' or args[1] == '--remove':
+        if len(args) < 3:
+            return
+        if args[2] == '-b' or args[2] == '--broadcast':
+            base.base_json_ctrl({"T":304,"mac":"FF:FF:FF:FF:FF:FF"})
+        else:
+            base.base_json_ctrl({"T":304,"mac":args[2]})
+    elif args[1] == '-b' or args[1] == '--broadcast':
+        base.base_json_ctrl({"T":306,"mac":"FF:FF:FF:FF:FF:FF","dev":0,"b":0,"s":0,"e":0,"h":0,"cmd":3,"megs":' '.join(args[2:])})
+    elif args[1] == '-g' or args[1] == '--group':
+        base.base_json_ctrl({"T":305,"dev":0,"b":0,"s":0,"e":0,"h":0,"cmd":3,"megs":' '.join(args[2:])})
+    else:
+        base.base_json_ctrl({"T":306,"mac":args[1],"dev":0,"b":0,"s":0,"e":0,"h":0,"cmd":3,"megs":' '.join(args[2:])})
 
-    # # [WAVEGO Pro] disabled: other-product / wheel-vehicle code - line-follow pipeline
+
+def _cmd_cv(args):
+    if len(args) < 2:
+        return
+    if args[1] == '-r' or args[1] == '--range':
+        if len(args) < 4:
+            return
+        try:
+            lower_trimmed = args[2].strip("[]")
+            lower_nums = [int(lower_num) for lower_num in lower_trimmed.split(",")]
+            if all(0 <= num <= 255 for num in lower_nums):
+                pass
+            else:
+                return
+        except:
+            return
+        try:
+            upper_trimmed = args[3].strip("[]")
+            upper_nums = [int(upper_num) for upper_num in upper_trimmed.split(",")]
+            if all(0 <= num <= 255 for num in upper_nums):
+                pass
+            else:
+                return
+        except:
+            return
+        cvf.change_target_color(lower_nums, upper_nums)
+    elif args[1] == '-s' or args[1] == '--select':
+        if len(args) < 3:
+            return
+        cvf.selet_target_color(args[2])
+
+
+def _cmd_video(args):
+    if len(args) < 3:
+        return
+    if args[1] == '-q' or args[1] == '--quality':
+        try:
+            int(args[2])
+        except:
+            return
+        cvf.set_video_quality(int(args[2]))
+
+
+# # [WAVEGO Pro] disabled: other-product / wheel-vehicle code - line-follow pipeline
 # elif args[0] == 'line':
 # if args[1] == '-r' or args[1] == '--range':
 # try:
@@ -404,56 +425,88 @@ def cmdline_ctrl(args_string):
 # # line -s 0.7 0.8 1.6 0.0006 0.6 0.4 0.2
 # cvf.set_line_track_args(float(args[2]), float(args[3]), float(args[4]), float(args[5]), float(args[6]), float(args[7]), float(args[8]))
 #
-    elif args[0] == 'track':
-        cvf.set_pt_track_args(args[1], args[2])
+def _cmd_track(args):
+    if len(args) < 3:
+        return
+    cvf.set_pt_track_args(args[1], args[2])
 
-    elif args[0] == 'timelapse':
-        if args[1] == '-s' or args[1] == '--start':
-            if len(args) != 6:
-                return
-            try:
-                move_speed = float(args[2])
-                move_time  = float(args[3])
-                t_interval = float(args[4])
-                loop_times = int(args[5])
-            except:
-                return
-            cvf.timelapse(move_speed, move_time, t_interval, loop_times)
-        elif args[1] == '-e' or args[1] == '--end' or args[1] == '--stop':
-            cvf.mission_stop()
 
-    # # [WAVEGO Pro] disabled: other-product / wheel-vehicle code (RaspRover / UGV Beast version text)
+def _cmd_timelapse(args):
+    if len(args) < 2:
+        return
+    if args[1] == '-s' or args[1] == '--start':
+        if len(args) != 6:
+            return
+        try:
+            move_speed = float(args[2])
+            move_time  = float(args[3])
+            t_interval = float(args[4])
+            loop_times = int(args[5])
+        except:
+            return
+        cvf.timelapse(move_speed, move_time, t_interval, loop_times)
+    elif args[1] == '-e' or args[1] == '--end' or args[1] == '--stop':
+        cvf.mission_stop()
+
+
+# # [WAVEGO Pro] disabled: other-product / wheel-vehicle code (RaspRover / UGV Beast version text)
 # elif args[0] == 'p':
 # main_type = int(args[1][0])
 # module_type = int(args[1][1])
 # set_version(main_type, module_type)
 #
 # # s 20
-    elif args[0] == 's':
-        main_type = int(args[1][0])
-        module_type = int(args[1][1])
+def _cmd_s(args):
+    if len(args) < 2:
+        return
+    main_type = int(args[1][0])
+    module_type = int(args[1][1])
     # # [WAVEGO Pro] disabled: other-product / wheel-vehicle code
     # if main_type == 1:
     # f['base_config']['robot_name'] = "RaspRover"
     # f['args_config']['max_speed'] = 0.65
     # f['args_config']['slow_speed'] = 0.3
-        if main_type == 2:
-            f['base_config']['robot_name'] = "UGV Rover"
-            f['args_config']['max_speed'] = 1.3
-            f['args_config']['slow_speed'] = 0.2
+    if main_type == 2:
+        f['base_config']['robot_name'] = "UGV Rover"
+        f['args_config']['max_speed'] = 1.3
+        f['args_config']['slow_speed'] = 0.2
     # # [WAVEGO Pro] disabled: other-product / wheel-vehicle code
     # elif main_type == 3:
     # f['base_config']['robot_name'] = "UGV Beast"
     # f['args_config']['max_speed'] = 1.0
     # f['args_config']['slow_speed'] = 0.2
-        f['base_config']['main_type'] = main_type
-        f['base_config']['module_type'] = module_type
-        with open(thisPath + '/config.yaml', "w") as yaml_file:
-            yaml.dump(f, yaml_file)
-        set_version(main_type, module_type)
+    f['base_config']['main_type'] = main_type
+    f['base_config']['module_type'] = module_type
+    with open(thisPath + '/config.yaml', "w") as yaml_file:
+        yaml.dump(f, yaml_file)
+    set_version(main_type, module_type)
 
-    elif args[0] == 'test':
-        cvf.update_base_data({"T":1003,"mac":1111,"megs":"helllo aaaaaaaa"})
+
+def _cmd_test(args):
+    cvf.update_base_data({"T":1003,"mac":1111,"megs":"helllo aaaaaaaa"})
+
+
+_CMD_DISPATCH = {
+    "base": _cmd_base,
+    "send": _cmd_send,
+    "cv": _cmd_cv,
+    "video": _cmd_video,
+    "v": _cmd_video,
+    "track": _cmd_track,
+    "timelapse": _cmd_timelapse,
+    "s": _cmd_s,
+    "test": _cmd_test,
+}
+
+
+# main cmdline for robot ctrl
+def cmdline_ctrl(args_string):
+    args = (args_string or "").split()
+    if not args:
+        return
+    handler = _CMD_DISPATCH.get(args[0])
+    if handler:
+        handler(args)
 
 
 # Route to handle the offer request

@@ -65,38 +65,54 @@ class AgentLoop:
         self.outputs.log("info", "agent loop starting")
         try:
             while self.running:
-                try:
-                    self.run_once()
-                    self.learner.observe("cycle", "ok", source="loop",
-                                         outcome="ok")
-                    self.learner.idle_pass()
-                    self.consecutive_failures = 0
-                    if self.once:
-                        break
-                except Exception as e:
-                    self.consecutive_failures += 1
-                    self.learner.observe("cycle", f"error: {type(e).__name__}",
-                                         source="loop", outcome="fail")
-                    self.outputs.log("error", f"cycle {self.cycle_count}: {e}")
-                    try:
-                        self.validator.halt(source="loop_guard")
-                    except Exception:
-                        pass
-                    if self.consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
-                        self.outputs.log("critical",
-                                         f"{MAX_CONSECUTIVE_FAILURES} consecutive failures — exiting")
-                        break
-                time.sleep(1.0)
+                if not self._cycle_guarded():
+                    break
         except KeyboardInterrupt:
             self.outputs.log("info", "keyboard interrupt — halting")
         finally:
-            try:
-                self.validator.halt(source="shutdown")
-            except Exception:
-                pass
-            if self._owns_validator:
-                self.validator.close()
-            self.outputs.log("info", f"agent loop stopped after {self.cycle_count} cycles")
+            self._shutdown()
+
+    def _cycle_guarded(self):
+        """One guarded cycle. Returns False when the loop must exit."""
+        try:
+            self.run_once()
+            self.learner.observe("cycle", "ok", source="loop",
+                                 outcome="ok")
+            self.learner.idle_pass()
+            self.consecutive_failures = 0
+            if self.once:
+                return False
+        except Exception as e:
+            return self._cycle_failed(e)
+        time.sleep(1.0)
+        return True
+
+    def _cycle_failed(self, exc):
+        """Failure ladder: observe, halt, count; 5 strikes = exit."""
+        self.consecutive_failures += 1
+        self.learner.observe("cycle", f"error: {type(exc).__name__}",
+                             source="loop", outcome="fail")
+        self.outputs.log("error", f"cycle {self.cycle_count}: {exc}")
+        try:
+            self.validator.halt(source="loop_guard")
+        except Exception:
+            pass
+        if self.consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+            self.outputs.log("critical",
+                             f"{MAX_CONSECUTIVE_FAILURES} consecutive failures — exiting")
+            return False
+        time.sleep(1.0)
+        return True
+
+    def _shutdown(self):
+        try:
+            self.validator.halt(source="shutdown")
+        except Exception:
+            pass
+        if self._owns_validator:
+            self.validator.close()
+        self.outputs.log("info",
+                         f"agent loop stopped after {self.cycle_count} cycles")
 
     def run_once(self):
         self.cycle_count += 1

@@ -130,6 +130,36 @@ class ReadLine:
 			self.lidar_ser = serial.Serial(glob.glob('/dev/ttyACM*')[0], 230400, timeout=1)
 
 
+class _StubSerial:
+	in_waiting = 0
+
+	def close(self):
+		pass
+
+
+class ReadLineStub:
+	"""Inert ReadLine stand-in for NullBaseController (no UART attached)."""
+
+	def __init__(self):
+		self.s = _StubSerial()
+		self.buf = bytearray()
+		self.sensor_data = []
+		self.lidar_angles_show = []
+		self.lidar_distances_show = []
+
+	def readline(self):
+		return b""
+
+	def clear_buffer(self):
+		self.buf = bytearray()
+
+	def read_sensor_data(self):
+		pass
+
+	def lidar_data_recv(self):
+		pass
+
+
 class BaseController:
 
 	def __init__(self, uart_dev_set, buad_set):
@@ -242,58 +272,6 @@ class BaseController:
 
 	def gimbal_dev_close(self):
 		self.ser.close()
-
-
-class NullBaseController:
-	"""Drop-in stand-in when no ESP32 is attached (or --no-base): absorbs all
-	commands, reports no feedback. Lets the UI and all services run headless."""
-
-	def __init__(self):
-		self.connected = False
-		self.motion_hook = None
-		self.base_data = {}
-		self.rl = ReadLineStub()
-
-	def send_command(self, data):
-		pass
-
-	def base_json_ctrl(self, input_json):
-		pass
-
-	def base_speed_ctrl(self, input_left, input_right):
-		pass
-
-	def gimbal_ctrl(self, input_x, input_y, input_speed, input_acceleration):
-		pass
-
-	def base_oled(self, input_line, input_text):
-		pass
-
-	def rgb_light(self, id, r, g, b):
-		pass
-
-	def breath_light(self, input_time):
-		pass
-
-	def feedback_data(self):
-		return None
-
-	def gimbal_dev_close(self):
-		pass
-
-	def breath_light(self, input_time):
-		breath_start_time = time.time()
-		while time.time() - breath_start_time < input_time:
-			for i in range(0, 128, 10):
-				self.rgb_light(0, round(255*(i/128)), 0, round(64*(i/128)))
-				self.rgb_light(1, round(64*(i/128)), 0, round(255*(i/128)))
-				time.sleep(0.1)
-			for i in range(0, 128, 10):
-				self.rgb_light(0, round(64*((128-i)/128)), 0, round(255*((128-i)/128)))
-				self.rgb_light(1, round(255*((128-i)/128)), 0, round(64*((128-i)/128)))
-				time.sleep(0.1)
-		self.rgb_light(0, 64, 0, 255)
-		self.rgb_light(1, 255, 0, 64)
 
 
 if __name__ == '__main__':
