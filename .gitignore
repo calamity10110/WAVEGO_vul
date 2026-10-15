@@ -9,5 +9,7 @@ releases/
 ugv_rpi/releases/
 *.tar.gz
 *.pytest_cache
+# Jupyter auto-generated checkpoint copies (tutorial dirs ship real files)
+.ipynb_checkpoints/
 # repowise local index + API keys (regenerate with: repowise init --yes --no-prose)
 .repowise/
