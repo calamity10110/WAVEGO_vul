@@ -25,7 +25,7 @@ jobs:
       - name: Install agent + test deps
         run: |
           pip install -r agent/requirements.txt
-          pip install pytest pyyaml flask flask-socketio pyserial numpy requests
+          pip install pytest pyyaml flask flask-socketio pyserial numpy requests pydantic
 
       - name: Agent test suites
         run: |
@@ -37,8 +37,8 @@ jobs:
           python agent/test_fuzz.py 1337 5000
           python agent/redteam_verdict.py
 
-      - name: ugv_rpi unit tests (pure subset; heavy Pi deps stubbed)
-        run: python -m pytest ugv_rpi/tests -q
+      - name: ugv_rpi + wavego_agent unit tests (pure subset; heavy Pi deps stubbed)
+        run: python -m pytest ugv_rpi/tests wavego_agent/tests -q
 
       - name: Package rpi5 bundle
         run: |

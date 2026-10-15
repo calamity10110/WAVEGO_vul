@@ -1,0 +1,5 @@
+# wavego_agent runtime deps — kept minimal by design (spec: stdlib first).
+pydantic>=2.0
+# pyserial is only needed for SerialTransport (real UART); the simulated
+# pipeline and all tests run without it.
+pyserial>=3.5
