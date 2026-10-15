@@ -3,7 +3,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from failsafe_keepalive import decide
+from failsafe_keepalive import STOP_CMD, decide, uart_device
 
 NOW = 1000.0
 
@@ -45,3 +45,28 @@ def test_window_boundary_strict():
 def test_custom_thresholds():
     assert decide(NOW, NOW - 4, 5, dead_after=5, motion_window_s=5) == 'stop'
     assert decide(NOW, NOW - 4, 4, dead_after=5, motion_window_s=5) == 'watch'
+
+
+def test_stop_cmd_is_a_firmware_stop():
+    # The direct-write payload must be a T:111 stop under the gait contract,
+    # matching base_ctrl.is_motion_command's zero-component no-motion shape.
+    assert STOP_CMD == {"T": 111, "FB": 0, "LR": 0}
+
+
+def test_uart_device_selection(monkeypatch):
+    import failsafe_keepalive as fk
+    monkeypatch.setattr(fk, 'is_pi5', lambda: True)
+    assert uart_device() == '/dev/ttyAMA0'
+    monkeypatch.setattr(fk, 'is_pi5', lambda: False)
+    assert uart_device() == '/dev/serial0'
+
+
+def test_is_pi5_reads_cpuinfo(tmp_path, monkeypatch):
+    import failsafe_keepalive as fk
+    fake = tmp_path / 'cpuinfo'
+    fake.write_text('Model\t\t: Raspberry Pi 5 Model B Rev 1.0\n')
+    monkeypatch.setattr('builtins.open', lambda p, *a, **k: fake.open('r'))
+    assert fk.is_pi5() is True
+    fake.write_text('Model\t\t: Raspberry Pi 4 Model B Rev 1.4\n')
+    assert fk.is_pi5() is False
+

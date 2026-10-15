@@ -11,7 +11,20 @@ import numpy as np
 curpath = os.path.realpath(__file__)
 thisPath = os.path.dirname(curpath)
 with open(thisPath + '/config.yaml', 'r') as yaml_file:
-    f = yaml.safe_load(yaml_file)
+	f = yaml.safe_load(yaml_file)
+
+MOTION_CMD_TYPES = (1, 111)
+
+
+def is_motion_command(data):
+	"""True when a queued command actually moves the robot: T:1 speed or
+	T:111 gait with a nonzero component. A pure stop (all zeros) is not
+	motion — it must not feed the failsafe heartbeat. Pure function."""
+	if not isinstance(data, dict):
+		return False
+	if data.get('T') not in MOTION_CMD_TYPES:
+		return False
+	return bool(data.get('L') or data.get('R') or data.get('FB') or data.get('LR'))
 
 class ReadLine:
 	def __init__(self, s):
@@ -163,12 +176,16 @@ class ReadLineStub:
 class BaseController:
 
 	def __init__(self, uart_dev_set, buad_set):
+		self._uart = uart_dev_set
+		self._baud = buad_set
+		self.connected = True
 		self.ser = serial.Serial(uart_dev_set, buad_set, timeout=1)
 		self.rl = ReadLine(self.ser)
 		self.command_queue = queue.Queue()
 		self.command_thread = threading.Thread(target=self.process_commands, daemon=True)
 		self.command_thread.start()
 		self.motion_hook = None
+		self._last_reconnect = 0
 
 		self.data_buffer = None
 		self.base_data = None
@@ -209,41 +226,45 @@ class BaseController:
 		self.command_queue.put(data)
 
 
+	def _try_reconnect(self):
+		"""Reopen the UART if the last attempt is older than 5s (backoff)."""
+		if time.time() - self._last_reconnect <= 5:
+			return
+		self._last_reconnect = time.time()
+		try:
+			self.ser = serial.Serial(self._uart, self._baud, timeout=1)
+			self.rl = ReadLine(self.ser)
+			self.connected = True
+			print("[base_ctrl] serial reconnected")
+		except Exception:
+			pass
+
+
+	def _notify_motion(self, data):
+		if self.motion_hook is None:
+			return
+		try:
+			if is_motion_command(data):
+				self.motion_hook(time.time())
+		except Exception:
+			pass
+
+
+	def _process_one(self, data):
+		"""Handle one dequeued command. While disconnected, motion commands
+		still feed the hook (heartbeat tracking) but nothing is written."""
+		if not self.connected:
+			self._try_reconnect()
+			self._notify_motion(data)
+			return
+		self.ser.write((json.dumps(data) + '\n').encode("utf-8"))
+		self._notify_motion(data)
+
+
 	def process_commands(self):
-		last_reconnect = 0
 		while True:
 			data = self.command_queue.get()
-			if not self.connected:
-				if time.time() - last_reconnect > 5:
-					last_reconnect = time.time()
-					try:
-						self.ser = serial.Serial(self._uart, self._baud, timeout=1)
-						self.rl = ReadLine(self.ser)
-						self.connected = True
-						print("[base_ctrl] serial reconnected")
-					except Exception:
-						pass
-				if self.motion_hook is not None:
-					try:
-						if data.get('T') in (1, 111) and (data.get('L') or data.get('R') or data.get('FB') or data.get('LR')):
-							self.motion_hook(time.time())
-					except Exception:
-						pass
-				continue
-			self.ser.write((json.dumps(data) + '\n').encode("utf-8"))
-			if self.motion_hook is not None:
-				try:
-					if data.get('T') in (1, 111) and (data.get('L') or data.get('R') or data.get('FB') or data.get('LR')):
-						self.motion_hook(time.time())
-				except Exception:
-					pass
-			if self.motion_hook is not None:
-				try:
-					if data.get('T') in (1, 111) and (data.get('L') or data.get('R') or data.get('FB') or data.get('LR')):
-						self.motion_hook(time.time())
-				except Exception:
-					pass
-			# print(data)
+			self._process_one(data)
 
 
 	def base_json_ctrl(self, input_json):
