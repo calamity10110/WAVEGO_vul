@@ -216,301 +216,366 @@ void runMission(String missionName, int intervalTime, int loopTimes) {
   }
 }
 
-void jsonCmdReceiveHandler(const JsonDocument& jsonCmdInput){
-  int cmdType;
-  cmdType = jsonCmdInput["T"].as<int>();
-  switch(cmdType){
-  case CMD_UGV_CTRL:
-                        bodyCtrl.ugvCtrl(jsonCmdInput["L"],
-                                         jsonCmdInput["R"]);
-                        break;
-  case CMD_PT_CTRL:
-                        bodyCtrl.ptCtrl(jsonCmdInput["X"],
-                                        jsonCmdInput["Y"]);
-                        break;
+// ---------------------------------------------------------------------------
+// Command dispatch — one small handler per T: command type. jsonCmdReceive-
+// Handler looks the type up in CMD_TABLE; adding a command is one function
+// plus one table row instead of another arm in a 47-case switch.
+// ---------------------------------------------------------------------------
 
-	case CMD_JOINT_MIDDLE:
-                        bodyCtrl.jointMiddle();
-                        break;
-  case CMD_RELEASE_TORQUE:
-                        bodyCtrl.releaseTorque();
-                        break;
-  case CMD_SINGLE_SERVO_CTRL:
-                        bodyCtrl.singleServoCtrl(jsonCmdInput["id"], 
-                                                 jsonCmdInput["goal"], 
-                                                 jsonCmdInput["time"], 
-                                                 jsonCmdInput["spd"]);
-                        break;
-  case CMD_GET_JOINTS_ZERO:
-                        memcpy(ServoMiddlePWM, bodyCtrl.getJointsZeroPosArray(), sizeof(ServoMiddlePWM));
-                        for (int i = 0; i < 12; i++) {  
-                          Serial.print("Joint ");
-                          Serial.print(i);
-                          Serial.print(": ");
-                          Serial.println(ServoMiddlePWM[i]);
-                        }
-                        break;
-  case CMD_SET_JOINTS_ZERO:
-                        for (int i = 0; i < 12; i++) {
-                          ServoMiddlePWM[i] = jsonCmdInput["set"][i];
-                        }
-                        bodyCtrl.setJointsZeroPosArray(ServoMiddlePWM);
-                        break;
-  case CMD_GET_CURRENT_POS:
-                        memcpy(jointsCurrentPos, bodyCtrl.getServoFeedback(), sizeof(jointsCurrentPos));
-                        jsonFeedback.clear();
-                        jsonFeedback["T"] = - CMD_GET_CURRENT_POS;
-                        for (int i = 0; i < 12; i++) {
-                          jsonFeedback["fb"][i] = jointsCurrentPos[i];
-                        }
-                        serializeJson(jsonFeedback, outputString);
-                        Serial.println(outputString);
-                        break;
-  case CMD_SET_CURRENT_POS_ZERO:
-                        bodyCtrl.setCurrentPosZero();
-                        memcpy(ServoMiddlePWM, bodyCtrl.getJointsZeroPosArray(), sizeof(ServoMiddlePWM));
-                        jsonFeedback.clear();
-                        jsonFeedback["T"] = CMD_SET_JOINTS_ZERO;
-                        for (int i = 0; i < 12; i++) {  
-                          Serial.print("Joint ");
-                          Serial.print(i);
-                          Serial.print(": ");
-                          Serial.println(ServoMiddlePWM[i]);
-                          jsonFeedback["set"][i] = ServoMiddlePWM[i];
-                        }
-                        serializeJson(jsonFeedback, outputString);
-                        Serial.println(outputString);
-                        filesCtrl.appendStep("boot", outputString);
-                        break;
-  case CMD_CTRL_JOINT_ANGLE:
-                        bodyCtrl.jointAngle(jsonCmdInput["joint"], jsonCmdInput["angle"]);
-                        bodyCtrl.moveTrigger();
-                        break;
-  case CMD_CTRL_JOINT_RAD:
-                        bodyCtrl.jointRad(jsonCmdInput["joint"], jsonCmdInput["rad"]);
-                        bodyCtrl.moveTrigger();
-                        break;
-  case CMD_STAND_UP:
-                        bodyCtrl.stand();
-                        break;
-  case CMD_BASIC_MOVE:
-                        bodyCtrl.inputCmd(jsonCmdInput["FB"], jsonCmdInput["LR"]);
-                        break;
-  case CMD_BASIC_FUNC:  
-                        if (jsonCmdInput["func"] == 1) {
-                          bodyCtrl.functionStayLow();
-                        } else if (jsonCmdInput["func"] == 2) {
-                          bodyCtrl.functionHandshake();
-                        } else if (jsonCmdInput["func"] == 3) {
-                          bodyCtrl.functionJump();
-                        } else if (jsonCmdInput["func"] == 4) {
-                          steadyMode = 1;
-                        } else if (jsonCmdInput["func"] == 5) {
-                          steadyMode = 0;
-                          bodyCtrl.standUp(95);
-                        }
-                        break;
+typedef void (*CmdHandler)(const JsonDocument& cmd);
 
+struct CmdEntry {
+  int type;
+  CmdHandler handler;
+};
 
+static void cmdUgvCtrl(const JsonDocument& c){
+  bodyCtrl.ugvCtrl(c["L"], c["R"]);
+}
 
-  case CMD_SINGLE_LEG_CTRL:
-                        bodyCtrl.singleLegCtrl(jsonCmdInput["leg"], 
-                                               jsonCmdInput["x"], 
-                                               jsonCmdInput["y"], 
-                                               jsonCmdInput["z"]);
-                        bodyCtrl.moveTrigger();
-                        break;
-  case CMD_STAND_UP_HEIGHT:
-                        bodyCtrl.standUp(jsonCmdInput["h"]);
-                        break;
-  case CMD_SET_INTERPOLATION_PARAMS:
-                        bodyCtrl.setInterpolationParams(jsonCmdInput["delay"], 
-                                                        jsonCmdInput["iterate"]);
-                        break;
-  case CMD_SET_GAIT_PARAMS:
-                        bodyCtrl.setGaitParams(jsonCmdInput["maxHeight"],
-                                               jsonCmdInput["minHeight"], 
-                                               jsonCmdInput["height"],
-                                               jsonCmdInput["lift"], 
-                                               jsonCmdInput["range"], 
-                                               jsonCmdInput["acc"], 
-                                               jsonCmdInput["extendedX"], 
-                                               jsonCmdInput["extendedZ"], 
-                                               jsonCmdInput["sideMax"], 
-                                               jsonCmdInput["massAdjust"]);
-                        break;
+static void cmdPtCtrl(const JsonDocument& c){
+  bodyCtrl.ptCtrl(c["X"], c["Y"]);
+}
 
+static void cmdJointMiddle(const JsonDocument& c){
+  bodyCtrl.jointMiddle();
+}
 
+static void cmdReleaseTorque(const JsonDocument& c){
+  bodyCtrl.releaseTorque();
+}
 
-	case CMD_SET_COLOR: 
-                        led.setColor(jsonCmdInput["set"][0], 
-                                     jsonCmdInput["set"][1], 
-                                     jsonCmdInput["set"][2], 
-                                     jsonCmdInput["set"][3]);
-												break;
-  case CMD_DISPLAY_SINGLE:
-                        screenCtrl.changeSingleLine(jsonCmdInput["line"], 
-                                                    jsonCmdInput["text"], 
-                                                    jsonCmdInput["update"]);
-                        break;
-  case CMD_DISPLAY_UPDATE:
-                        screenCtrl.updateFrame();
-                        break;
-                        
-  case CMD_DISPLAY_FRAME:
-                        screenCtrl.changeSingleLine(1, jsonCmdInput["l1"], false);
-                        screenCtrl.changeSingleLine(2, jsonCmdInput["l2"], false);
-                        screenCtrl.changeSingleLine(3, jsonCmdInput["l3"], false);
-                        screenCtrl.changeSingleLine(4, jsonCmdInput["l4"], true);
-                        break;
-  case CMD_DISPLAY_CLEAR:
-                        screenCtrl.clearDisplay();
-                        break;
-  case CMD_BUZZER_CTRL:
-                        tone(BUZZER_PIN, jsonCmdInput["freq"]);
-                        buzzerCtrl(jsonCmdInput["freq"], jsonCmdInput["duration"]);
-                        break;
-  case CMD_GET_BATTERY_VOLTAGE:
-                        InaDataUpdate();
-                        jsonFeedback.clear();
-                        jsonFeedback["T"] = - CMD_GET_BATTERY_VOLTAGE;
-                        jsonFeedback["voltage"] = loadVoltage_V;
-                        serializeJson(jsonFeedback, outputString);
-                        Serial.println(outputString);
-                        break;
+static void cmdSingleServoCtrl(const JsonDocument& c){
+  bodyCtrl.singleServoCtrl(c["id"], c["goal"], c["time"], c["spd"]);
+}
 
-
-  case CMD_SCAN_FILES:
-                        filesCtrl.scan();
-                        break;
-  case CMD_CREATE_MISSION:
-                        filesCtrl.createMission(jsonCmdInput["name"], 
-                                                jsonCmdInput["intro"]);
-                        break;
-  case CMD_FORMAT_FLASH:
-                        filesCtrl.flash();
-                        break;
-  case CMD_MISSION_CONTENT:
-                        filesCtrl.missionContent(jsonCmdInput["name"]);
-                        break;
-  case CMD_APPEND_SETP_JSON:
-                        filesCtrl.appendStep(jsonCmdInput["name"],
-                                             jsonCmdInput["json"]);
-                        break;
-  case CMD_INSERT_SETP_JSON:
-                        filesCtrl.insertStep(jsonCmdInput["name"],
-                                             jsonCmdInput["step"],
-                                             jsonCmdInput["json"]);
-                        break;
-  case CMD_REPLACE_SETP_JSON:
-                        filesCtrl.replaceStep(jsonCmdInput["name"],
-                                              jsonCmdInput["step"],
-                                              jsonCmdInput["json"]);
-                        break;
-  case CMD_DELETE_SETP:
-                        filesCtrl.deleteStep(jsonCmdInput["name"],
-                                             jsonCmdInput["step"]);
-                        break;
-  case CMD_RUN_STEP:    
-                        runStep(jsonCmdInput["name"], jsonCmdInput["step"]);
-                        break;
-  case CMD_RUN_MISSION: 
-                        runMission(jsonCmdInput["name"], 
-                                   jsonCmdInput["interval"], 
-                                   jsonCmdInput["loop"]);
-                        break;
-  case CMD_DELETE_MISSION:
-                        filesCtrl.deleteMission(jsonCmdInput["name"]);
-                        break;
-
-                        
-
-  case CMD_SET_WIFI_MODE:
-                        // Serial.println("lickLWFeetB");
-                        if (jsonCmdInput["mode"] == 0) {
-                          wireless.setWifiMode(jsonCmdInput["mode"], "", "", 0, "", "");
-                          jsonFeedback.clear();
-                          jsonFeedback["T"] = CMD_SET_WIFI_MODE;
-                          jsonFeedback["mode"] = 0;
-                          serializeJson(jsonFeedback, outputString);
-                          filesCtrl.checkReplaceStep("boot", outputString);
-                        } else if (jsonCmdInput["mode"] == 1) {
-                          if (wireless.setWifiMode(jsonCmdInput["mode"], 
-                                                   jsonCmdInput["ap_ssid"], 
-                                                   jsonCmdInput["ap_password"], 
-                                                   jsonCmdInput["channel"], 
-                                                   jsonCmdInput["sta_ssid"], 
-                                                   jsonCmdInput["sta_password"])) {
-                              jsonFeedback.clear();
-                              jsonFeedback["T"] = CMD_SET_WIFI_MODE;
-                              jsonFeedback["mode"] = 1;
-                              jsonFeedback["ap_ssid"] = jsonCmdInput["ap_ssid"];
-                              jsonFeedback["ap_password"] = jsonCmdInput["ap_password"];
-                              jsonFeedback["channel"] = jsonCmdInput["channel"];
-                              jsonFeedback["sta_ssid"] = jsonCmdInput["sta_ssid"];
-                              jsonFeedback["sta_password"] = jsonCmdInput["sta_password"];
-                              serializeJson(jsonFeedback, outputString);
-                              filesCtrl.checkReplaceStep("boot", outputString);
-                          } else {
-                              jsonFeedback.clear();
-                              jsonFeedback["T"] = CMD_SET_WIFI_MODE;
-                              jsonFeedback["mode"] = 1;
-                              jsonFeedback["ap_ssid"] = jsonCmdInput["ap_ssid"];
-                              jsonFeedback["ap_password"] = jsonCmdInput["ap_password"];
-                              jsonFeedback["channel"] = jsonCmdInput["channel"];
-                              jsonFeedback["sta_ssid"] = "";
-                              jsonFeedback["sta_password"] = "";
-                              serializeJson(jsonFeedback, outputString);
-                              filesCtrl.checkReplaceStep("boot", outputString);
-                          }
-                        }
-                        break;
-  case CMD_WIFI_INFO:
-                        outputString = filesCtrl.findCmdByType("boot", CMD_SET_WIFI_MODE);
-                        Serial.println(outputString);
-                        break;
-  case CMD_GET_AP_IP:
-                        outputString = wireless.getAPIP();
-                        Serial.println(outputString);
-                        break;
-  case CMD_GET_STA_IP:
-                        outputString = wireless.getSTAIP();
-                        Serial.println(outputString);
-                        break;
-
-
-
-  case CMD_INIT_ESP_NOW:
-                        wireless.espnowInit(jsonCmdInput["longrange"]);
-                        break;
-  case CMD_SET_ESP_NOW_MODE:
-                        wireless.setEspNowMode(jsonCmdInput["mode"]);
-                        break;
-  case CMD_GET_MAC:
-                        outputString = wireless.macToString(wireless.getMac());
-                        Serial.println(outputString);
-                        break;
-  case CMD_ESP_NOW_SEND:
-                        wireless.sendEspNow(jsonCmdInput["mac"], jsonCmdInput["data"]);
-                        break;
-  case CMD_ADD_MAC:
-                        wireless.addMacToPeerString(jsonCmdInput["mac"]);
-                        break;
-
-
-  case ESP32_REBOOT:
-                        ESP.restart();
-                        break;
-  case CMD_CLEAR_NVS:
-                        nvs_flash_erase();
-                        delay(1000);
-                        nvs_flash_init();
-                        break;
+static void cmdGetJointsZero(const JsonDocument& c){
+  memcpy(ServoMiddlePWM, bodyCtrl.getJointsZeroPosArray(), sizeof(ServoMiddlePWM));
+  for (int i = 0; i < 12; i++) {
+    Serial.print("Joint ");
+    Serial.print(i);
+    Serial.print(": ");
+    Serial.println(ServoMiddlePWM[i]);
   }
 }
 
+static void cmdSetJointsZero(const JsonDocument& c){
+  for (int i = 0; i < 12; i++) {
+    ServoMiddlePWM[i] = c["set"][i];
+  }
+  bodyCtrl.setJointsZeroPosArray(ServoMiddlePWM);
+}
 
+static void cmdGetCurrentPos(const JsonDocument& c){
+  memcpy(jointsCurrentPos, bodyCtrl.getServoFeedback(), sizeof(jointsCurrentPos));
+  jsonFeedback.clear();
+  jsonFeedback["T"] = - CMD_GET_CURRENT_POS;
+  for (int i = 0; i < 12; i++) {
+    jsonFeedback["fb"][i] = jointsCurrentPos[i];
+  }
+  serializeJson(jsonFeedback, outputString);
+  Serial.println(outputString);
+}
 
+static void cmdSetCurrentPosZero(const JsonDocument& c){
+  bodyCtrl.setCurrentPosZero();
+  memcpy(ServoMiddlePWM, bodyCtrl.getJointsZeroPosArray(), sizeof(ServoMiddlePWM));
+  jsonFeedback.clear();
+  jsonFeedback["T"] = CMD_SET_JOINTS_ZERO;
+  for (int i = 0; i < 12; i++) {
+    Serial.print("Joint ");
+    Serial.print(i);
+    Serial.print(": ");
+    Serial.println(ServoMiddlePWM[i]);
+    jsonFeedback["set"][i] = ServoMiddlePWM[i];
+  }
+  serializeJson(jsonFeedback, outputString);
+  Serial.println(outputString);
+  filesCtrl.appendStep("boot", outputString);
+}
+
+static void cmdCtrlJointAngle(const JsonDocument& c){
+  bodyCtrl.jointAngle(c["joint"], c["angle"]);
+  bodyCtrl.moveTrigger();
+}
+
+static void cmdCtrlJointRad(const JsonDocument& c){
+  bodyCtrl.jointRad(c["joint"], c["rad"]);
+  bodyCtrl.moveTrigger();
+}
+
+static void cmdStandUp(const JsonDocument& c){
+  bodyCtrl.stand();
+}
+
+static void cmdBasicMove(const JsonDocument& c){
+  bodyCtrl.inputCmd(c["FB"], c["LR"]);
+}
+
+static void cmdBasicFunc(const JsonDocument& c){
+  if (c["func"] == 1) {
+    bodyCtrl.functionStayLow();
+  } else if (c["func"] == 2) {
+    bodyCtrl.functionHandshake();
+  } else if (c["func"] == 3) {
+    bodyCtrl.functionJump();
+  } else if (c["func"] == 4) {
+    steadyMode = 1;
+  } else if (c["func"] == 5) {
+    steadyMode = 0;
+    bodyCtrl.standUp(95);
+  }
+}
+
+static void cmdSingleLegCtrl(const JsonDocument& c){
+  bodyCtrl.singleLegCtrl(c["leg"], c["x"], c["y"], c["z"]);
+  bodyCtrl.moveTrigger();
+}
+
+static void cmdStandUpHeight(const JsonDocument& c){
+  bodyCtrl.standUp(c["h"]);
+}
+
+static void cmdSetInterpolationParams(const JsonDocument& c){
+  bodyCtrl.setInterpolationParams(c["delay"], c["iterate"]);
+}
+
+static void cmdSetGaitParams(const JsonDocument& c){
+  bodyCtrl.setGaitParams(c["maxHeight"],
+                         c["minHeight"],
+                         c["height"],
+                         c["lift"],
+                         c["range"],
+                         c["acc"],
+                         c["extendedX"],
+                         c["extendedZ"],
+                         c["sideMax"],
+                         c["massAdjust"]);
+}
+
+static void cmdSetColor(const JsonDocument& c){
+  led.setColor(c["set"][0], c["set"][1], c["set"][2], c["set"][3]);
+}
+
+static void cmdDisplaySingle(const JsonDocument& c){
+  screenCtrl.changeSingleLine(c["line"], c["text"], c["update"]);
+}
+
+static void cmdDisplayUpdate(const JsonDocument& c){
+  screenCtrl.updateFrame();
+}
+
+static void cmdDisplayFrame(const JsonDocument& c){
+  screenCtrl.changeSingleLine(1, c["l1"], false);
+  screenCtrl.changeSingleLine(2, c["l2"], false);
+  screenCtrl.changeSingleLine(3, c["l3"], false);
+  screenCtrl.changeSingleLine(4, c["l4"], true);
+}
+
+static void cmdDisplayClear(const JsonDocument& c){
+  screenCtrl.clearDisplay();
+}
+
+static void cmdBuzzerCtrl(const JsonDocument& c){
+  tone(BUZZER_PIN, c["freq"]);
+  buzzerCtrl(c["freq"], c["duration"]);
+}
+
+static void cmdGetBatteryVoltage(const JsonDocument& c){
+  InaDataUpdate();
+  jsonFeedback.clear();
+  jsonFeedback["T"] = - CMD_GET_BATTERY_VOLTAGE;
+  jsonFeedback["voltage"] = loadVoltage_V;
+  serializeJson(jsonFeedback, outputString);
+  Serial.println(outputString);
+}
+
+static void cmdScanFiles(const JsonDocument& c){
+  filesCtrl.scan();
+}
+
+static void cmdCreateMission(const JsonDocument& c){
+  filesCtrl.createMission(c["name"], c["intro"]);
+}
+
+static void cmdFormatFlash(const JsonDocument& c){
+  filesCtrl.flash();
+}
+
+static void cmdMissionContent(const JsonDocument& c){
+  filesCtrl.missionContent(c["name"]);
+}
+
+static void cmdAppendStepJson(const JsonDocument& c){
+  filesCtrl.appendStep(c["name"], c["json"]);
+}
+
+static void cmdInsertStepJson(const JsonDocument& c){
+  filesCtrl.insertStep(c["name"], c["step"], c["json"]);
+}
+
+static void cmdReplaceStepJson(const JsonDocument& c){
+  filesCtrl.replaceStep(c["name"], c["step"], c["json"]);
+}
+
+static void cmdDeleteStep(const JsonDocument& c){
+  filesCtrl.deleteStep(c["name"], c["step"]);
+}
+
+static void cmdRunStep(const JsonDocument& c){
+  runStep(c["name"], c["step"]);
+}
+
+static void cmdRunMission(const JsonDocument& c){
+  runMission(c["name"], c["interval"], c["loop"]);
+}
+
+static void cmdDeleteMission(const JsonDocument& c){
+  filesCtrl.deleteMission(c["name"]);
+}
+
+// Shared tail of every CMD_SET_WIFI_MODE branch: publish the resulting wifi
+// config as a boot-mission step so it survives reboot. Mode 0 reports only
+// the mode; mode 1 echoes the AP credentials and (on success) the STA ones.
+static void sendWifiModeFeedback(int mode, const JsonDocument& cmd,
+                                 const char* sta_ssid, const char* sta_password){
+  jsonFeedback.clear();
+  jsonFeedback["T"] = CMD_SET_WIFI_MODE;
+  jsonFeedback["mode"] = mode;
+  if (mode == 1) {
+    jsonFeedback["ap_ssid"] = cmd["ap_ssid"];
+    jsonFeedback["ap_password"] = cmd["ap_password"];
+    jsonFeedback["channel"] = cmd["channel"];
+    jsonFeedback["sta_ssid"] = sta_ssid;
+    jsonFeedback["sta_password"] = sta_password;
+  }
+  serializeJson(jsonFeedback, outputString);
+  filesCtrl.checkReplaceStep("boot", outputString);
+}
+
+static void cmdSetWifiMode(const JsonDocument& c){
+  if (c["mode"] == 0) {
+    wireless.setWifiMode(c["mode"], "", "", 0, "", "");
+    sendWifiModeFeedback(0, c, "", "");
+  } else if (c["mode"] == 1) {
+    if (wireless.setWifiMode(c["mode"],
+                             c["ap_ssid"],
+                             c["ap_password"],
+                             c["channel"],
+                             c["sta_ssid"],
+                             c["sta_password"])) {
+      sendWifiModeFeedback(1, c, c["sta_ssid"] | "", c["sta_password"] | "");
+    } else {
+      sendWifiModeFeedback(1, c, "", "");
+    }
+  }
+}
+
+static void cmdWifiInfo(const JsonDocument& c){
+  outputString = filesCtrl.findCmdByType("boot", CMD_SET_WIFI_MODE);
+  Serial.println(outputString);
+}
+
+static void cmdGetApIp(const JsonDocument& c){
+  outputString = wireless.getAPIP();
+  Serial.println(outputString);
+}
+
+static void cmdGetStaIp(const JsonDocument& c){
+  outputString = wireless.getSTAIP();
+  Serial.println(outputString);
+}
+
+static void cmdInitEspNow(const JsonDocument& c){
+  wireless.espnowInit(c["longrange"]);
+}
+
+static void cmdSetEspNowMode(const JsonDocument& c){
+  wireless.setEspNowMode(c["mode"]);
+}
+
+static void cmdGetMac(const JsonDocument& c){
+  outputString = wireless.macToString(wireless.getMac());
+  Serial.println(outputString);
+}
+
+static void cmdEspNowSend(const JsonDocument& c){
+  wireless.sendEspNow(c["mac"], c["data"]);
+}
+
+static void cmdAddMac(const JsonDocument& c){
+  wireless.addMacToPeerString(c["mac"]);
+}
+
+static void cmdEsp32Reboot(const JsonDocument& c){
+  ESP.restart();
+}
+
+static void cmdClearNvs(const JsonDocument& c){
+  nvs_flash_erase();
+  delay(1000);
+  nvs_flash_init();
+}
+
+static const CmdEntry CMD_TABLE[] = {
+  {CMD_UGV_CTRL,                 cmdUgvCtrl},
+  {CMD_PT_CTRL,                  cmdPtCtrl},
+  {CMD_JOINT_MIDDLE,             cmdJointMiddle},
+  {CMD_RELEASE_TORQUE,           cmdReleaseTorque},
+  {CMD_SINGLE_SERVO_CTRL,        cmdSingleServoCtrl},
+  {CMD_GET_JOINTS_ZERO,          cmdGetJointsZero},
+  {CMD_SET_JOINTS_ZERO,          cmdSetJointsZero},
+  {CMD_GET_CURRENT_POS,          cmdGetCurrentPos},
+  {CMD_SET_CURRENT_POS_ZERO,     cmdSetCurrentPosZero},
+  {CMD_CTRL_JOINT_ANGLE,         cmdCtrlJointAngle},
+  {CMD_CTRL_JOINT_RAD,           cmdCtrlJointRad},
+  {CMD_STAND_UP,                 cmdStandUp},
+  {CMD_BASIC_MOVE,               cmdBasicMove},
+  {CMD_BASIC_FUNC,               cmdBasicFunc},
+  {CMD_SINGLE_LEG_CTRL,          cmdSingleLegCtrl},
+  {CMD_STAND_UP_HEIGHT,          cmdStandUpHeight},
+  {CMD_SET_INTERPOLATION_PARAMS, cmdSetInterpolationParams},
+  {CMD_SET_GAIT_PARAMS,          cmdSetGaitParams},
+  {CMD_SET_COLOR,                cmdSetColor},
+  {CMD_DISPLAY_SINGLE,           cmdDisplaySingle},
+  {CMD_DISPLAY_UPDATE,           cmdDisplayUpdate},
+  {CMD_DISPLAY_FRAME,            cmdDisplayFrame},
+  {CMD_DISPLAY_CLEAR,            cmdDisplayClear},
+  {CMD_BUZZER_CTRL,              cmdBuzzerCtrl},
+  {CMD_GET_BATTERY_VOLTAGE,      cmdGetBatteryVoltage},
+  {CMD_SCAN_FILES,               cmdScanFiles},
+  {CMD_CREATE_MISSION,           cmdCreateMission},
+  {CMD_FORMAT_FLASH,             cmdFormatFlash},
+  {CMD_MISSION_CONTENT,          cmdMissionContent},
+  {CMD_APPEND_SETP_JSON,         cmdAppendStepJson},
+  {CMD_INSERT_SETP_JSON,         cmdInsertStepJson},
+  {CMD_REPLACE_SETP_JSON,        cmdReplaceStepJson},
+  {CMD_DELETE_SETP,              cmdDeleteStep},
+  {CMD_RUN_STEP,                 cmdRunStep},
+  {CMD_RUN_MISSION,              cmdRunMission},
+  {CMD_DELETE_MISSION,           cmdDeleteMission},
+  {CMD_SET_WIFI_MODE,            cmdSetWifiMode},
+  {CMD_WIFI_INFO,                cmdWifiInfo},
+  {CMD_GET_AP_IP,                cmdGetApIp},
+  {CMD_GET_STA_IP,               cmdGetStaIp},
+  {CMD_INIT_ESP_NOW,             cmdInitEspNow},
+  {CMD_SET_ESP_NOW_MODE,         cmdSetEspNowMode},
+  {CMD_GET_MAC,                  cmdGetMac},
+  {CMD_ESP_NOW_SEND,             cmdEspNowSend},
+  {CMD_ADD_MAC,                  cmdAddMac},
+  {ESP32_REBOOT,                 cmdEsp32Reboot},
+  {CMD_CLEAR_NVS,                cmdClearNvs},
+};
+
+void jsonCmdReceiveHandler(const JsonDocument& jsonCmdInput){
+  const int cmdType = jsonCmdInput["T"].as<int>();
+  for (size_t i = 0; i < sizeof(CMD_TABLE) / sizeof(CMD_TABLE[0]); i++) {
+    if (CMD_TABLE[i].type == cmdType) {
+      CMD_TABLE[i].handler(jsonCmdInput);
+      return;
+    }
+  }
+}
 
 void serialCtrl() {
   static String receivedData;
