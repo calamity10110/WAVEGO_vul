@@ -28,7 +28,7 @@ from .persona import PersonaConfig, PetPersona, Scene
 from .systemstats import SystemStats
 from .validator import ConfigError, build_validator, validate_llm_config
 from .vlm_client import FakeVLM, VLMClient
-from .vision import CameraFrames, StaticFrames
+from .vision import CameraFrames, FrameChangeDetector, StaticFrames
 
 log = logging.getLogger("wavego-pet")
 
@@ -216,20 +216,24 @@ def main(argv: list[str] | None = None) -> int:
 
     transport, vlm, frames, telemetry, persona = build_components(cfg, args.mock)
     display = build_display(cfg, args.mock)
+    brain_cfg = cfg.get("brain") or {}
     supervisor = MotionSupervisor(
         transport, telemetry=telemetry,
         logger=JsonlLogger((cfg.get("logging") or {}).get("jsonl_path")),
         rate_hz=(cfg.get("motion") or {}).get("rate_hz", 30.0))
     brain = PetBrain(
         supervisor, vlm, frames, persona,
-        scene_every_s=args.scene_every
-        or (cfg.get("brain") or {}).get("scene_every_s", 12.0),
+        scene_every_s=args.scene_every or brain_cfg.get("scene_every_s", 12.0),
         display=display, validator=validator,
-        stats=None if args.mock else SystemStats())
+        stats=None if args.mock else SystemStats(),
+        change_detector=None if args.mock else FrameChangeDetector(
+            threshold=float(brain_cfg.get("change_threshold", 3.0))))
 
     supervisor.start()
     if not args.mock:
         frames.start()
+        log.info("warming up VLM prompt cache (one throwaway scene)…")
+        brain.warmup()
     log.info("pet is alive (mock=%s) — Ctrl-C to stop", args.mock)
     try:
         started = time.monotonic()

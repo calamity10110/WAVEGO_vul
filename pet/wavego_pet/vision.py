@@ -142,3 +142,52 @@ class StaticFrames:
         jpeg = self._jpegs[min(self._i, len(self._jpegs) - 1)]
         self._i = (self._i + 1) % len(self._jpegs)
         return jpeg
+
+
+class FrameChangeDetector:
+    """Change-gated inference: skip the VLM when the scene has not moved.
+
+    Compares a tiny grayscale thumbnail of each frame against the previous
+    one (mean absolute difference, 0..255 scale). The pet spends most of
+    its life in a static room — full inference per tick on an unchanged
+    scene is the cheapest thing to eliminate.
+
+    `changed_frame()` takes a raw capture array (numpy, CI-safe);
+    `changed_jpeg()` decodes a JPEG first (needs cv2, Pi-only path).
+    """
+
+    def __init__(self, threshold: float = 3.0, size: int = 32):
+        self.threshold = threshold
+        self.size = size
+        self._prev = None
+
+    def changed_frame(self, frame) -> bool:
+        small = _thumb(frame, self.size)
+        if self._prev is None or small.shape != self._prev.shape:
+            self._prev = small
+            return True
+        import numpy as np
+
+        diff = float(np.abs(small.astype(int) - self._prev.astype(int)).mean())
+        self._prev = small
+        return diff > self.threshold
+
+    def changed_jpeg(self, jpeg_bytes: bytes) -> bool:
+        import cv2
+        import numpy as np
+
+        frame = cv2.imdecode(np.frombuffer(jpeg_bytes, np.uint8),
+                             cv2.IMREAD_COLOR)
+        if frame is None:
+            return True
+        return self.changed_frame(frame)
+
+
+def _thumb(frame, size: int):
+    """Grayscale thumbnail, lenient about the capture's channel layout."""
+    import cv2
+
+    if frame.ndim == 3 and frame.shape[2] >= 3:
+        frame = frame[:, :, :3]
+    gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+    return cv2.resize(gray, (size, size))

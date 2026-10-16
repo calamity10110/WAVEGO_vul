@@ -28,7 +28,8 @@ class PetBrain:
     def __init__(self, supervisor: MotionSupervisor, vlm: VLMClient,
                  frames: CameraFrames, persona: PetPersona | None = None,
                  clock=time.monotonic, scene_every_s: float = 12.0,
-                 on_event=None, display=None, validator=None, stats=None):
+                 on_event=None, display=None, validator=None, stats=None,
+                 change_detector=None):
         self.supervisor = supervisor
         self.vlm = vlm
         self.frames = frames
@@ -36,6 +37,7 @@ class PetBrain:
         self.display = display            # optional LCDDisplay/NullDisplay
         self.validator = validator        # optional second opinion
         self.stats = stats                # optional SystemStats
+        self.change_detector = change_detector  # optional scene-change gate
         self._clock = clock
         self.scene_every_s = scene_every_s
         self._last_scene_t = -1e9
@@ -43,13 +45,17 @@ class PetBrain:
 
     def tick(self) -> bool:
         """One brain cycle. True when a scene was processed (commands may
-        have been submitted); False = skipped (rate limit / no frame)."""
+        have been submitted); False = skipped (rate limit / no frame /
+        scene unchanged)."""
         now = self._clock()
         if now - self._last_scene_t < self.scene_every_s:
             return False
         jpeg = self.frames.latest_jpeg()
         if jpeg is None:
             return False
+        if self.change_detector is not None \
+                and not self.change_detector.changed_jpeg(jpeg):
+            return False                   # static scene: save the inference
         scene = self.vlm.describe(jpeg)
         if scene is None:
             return False
@@ -59,6 +65,18 @@ class PetBrain:
         self._dispatch(self.persona.update(scene, now), scene)
         self._refresh_display(scene)
         return True
+
+    def warmup(self) -> None:
+        """Precalculate: one throwaway describe at boot so llama-server's
+        prompt cache holds our exact system+user prefix (and the model
+        weights/vision encoder are paged in). Failures are fine."""
+        try:
+            jpeg = self.frames.latest_jpeg()
+            if jpeg is not None:
+                self.vlm.describe(jpeg)
+                self._on_event({"event": "warmup_done"})
+        except Exception as exc:
+            log.debug("warmup failed (harmless): %s", exc)
 
     def _refresh_display(self, scene: Scene) -> None:
         if self.display is None:

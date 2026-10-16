@@ -10,7 +10,15 @@ ExecStart=__LLAMA_DIR__/build/bin/llama-server \
   -m __MODEL__ \
   --mmproj __MMPROJ__ \
   --host 127.0.0.1 --port 8080 \
-  --jinja -c 4096 -t 4
+  --jinja -c 4096 -t 4 \
+  --cache-reuse 256 \
+  --slot-save-path __PET_DIR__/cache
+# --cache-reuse 256: KV-shift reuse beyond the exact prefix (our system
+# prompt + "Describe this frame." is identical every scene, so only the
+# image tokens are processed fresh after the first call).
+# --slot-save-path: enables /slots/0?action=save|restore so a precomputed
+# prompt KV state can be persisted across reboots (see README speed section).
+ExecStartPre=/usr/bin/mkdir -p __PET_DIR__/cache
 Restart=on-failure
 RestartSec=5
 # the 2B model + vision encoder fit comfortably in 8 GB; guard the rest

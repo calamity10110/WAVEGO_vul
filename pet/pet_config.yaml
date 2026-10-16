@@ -52,6 +52,10 @@ brain:
   # seconds between VLM scene questions. On a Pi 5 one scene costs ~10-20 s
   # (image encode + ~30 tokens at 4-5 tok/s); do not go below ~10.
   scene_every_s: 12.0
+  # scene-change gate: mean pixel diff (0-255) on a 32x32 grayscale thumb
+  # below which the VLM is skipped entirely ("nothing moved"). Raise it to
+  # save more inference, lower it if the pet misses slow changes.
+  change_threshold: 3.0
 
 # Persona tuning — all durations clamped to pet-safe bounds in code
 # (walk <= 2.5 s @ speed <= 0.5, turn <= 1.5 s) no matter what goes here.

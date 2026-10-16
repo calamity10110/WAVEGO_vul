@@ -232,7 +232,56 @@ in code — no config can make the pet sprint or jump-spam.
 - **Pet does nothing** — `--log-level DEBUG` in the service file; check the
   VLM replies are valid JSON (`journalctl -u wavego-pet | grep scene`).
 
-## 10. Research notes — TinyVLM adoption
+## 10. Inference speed (and the precalculate trick)
+
+One scene on the Pi 5 costs ~10–20 s: vision-encode + prefill + ~30 tokens
+at ~4–5 tok/s. The stack already applies three levers, and more are one
+config/flag away:
+
+**Built in:**
+
+- **Precalculated prompt cache.** The system prompt + "Describe this
+  frame." are byte-identical every scene, so with llama-server's prompt
+  caching only the new image tokens are processed after the first call.
+  `--cache-reuse 256` (set in `wavego-pet-vlm.service`) extends reuse
+  beyond the exact prefix via KV shifting. Prefix stability is what makes
+  this work — never "personalize" the system prompt per request.
+- **Boot warmup.** `petserve` fires one throwaway scene at startup, so
+  weights and the vision encoder are paged in and the prompt cache is
+  populated before the pet's first real scene.
+- **Change-gated inference.** A 32x32 grayscale frame-diff (`brain.
+  change_threshold`, default 3.0) skips the VLM entirely when nothing in
+  the room moved — in an idle household this removes most scenes.
+
+**One flag away — persist the precomputed cache across reboots** (slot
+save/restore, after a scene has warmed the server):
+
+```bash
+curl -X POST 'http://127.0.0.1:8080/slots/0?action=save'      -H 'Content-Type: application/json' -d '{"filename":"warm.bin"}'
+# after the next reboot:
+curl -X POST 'http://127.0.0.1:8080/slots/0?action=restore'      -H 'Content-Type: application/json' -d '{"filename":"warm.bin"}'
+```
+(`--slot-save-path` is already set by the service; wire the restore into
+a systemd unit if you want it automatic.)
+
+**Config levers, in order of impact:**
+
+1. Smaller frames: `camera.width/height: 336` — Qwen3-VL's vision tokens
+   scale with pixels; this cuts encode + prefill hard (costs some scene
+   detail).
+2. A smaller model: [Moondream 0.5B](https://moondream.ai/blog/introducing-moondream-0-5b)
+   or [SmolVLM2 256M/500M](https://huggingface.co/blog/smolvlm2) (GGUFs
+   run in the same llama-server) — several times faster, weaker scene
+   understanding; try one as the VLM and keep Qwen3-VL as the validator.
+   (FastVLM is faster still but Apple-MLX only, not ARM Linux.)
+3. Output cap: the scene answer is ~25 tokens; `max_tokens` is already 60.
+4. Hardware: the Raspberry Pi AI accelerator route covers vision
+   encoders well — see the [Pi blog on VLM workloads](https://www.raspberrypi.com/news/seeing-understanding-and-responding-low-power-cnn-vlm-and-slm-workloads-on-raspberry-pi-5).
+   References: [KV-cache reuse tutorial](https://github.com/ggml-org/llama.cpp/discussions/13606),
+   [prompt-cache mechanics](https://particula.tech/blog/prompt-reprocessing-swa-hybrid-models-kv-cache),
+   [LearnOpenCV edge VLM benchmark](https://learnopencv.com/vlm-on-edge-devices).
+
+## 11. Research notes — TinyVLM adoption
 
 Reviewed: [anananan116/TinyVLM](https://github.com/anananan116/TinyVLM)
 (MIT) — a 1.5B VLM (Llama-3.2-1B + frozen CLIP ViT-L/14 + MLP adapter,
@@ -257,7 +306,7 @@ techniques are adopted:
   recipe (freeze vision encoder, train adapter, then SFT) is a viable path
   to a smaller, faster, domain-tuned pet VLM later. Not built yet.
 
-## 11. Layout
+## 12. Layout
 
 ```
 pet/
@@ -268,6 +317,6 @@ pet/
   wavego-pet-vlm.service  llama-server service (systemd template)
   wavego_pet/             persona, vlm_client, validator, vision, display,
                           systemstats, brain, petserve
-  tests/                  74 tests, all mocked, run on any machine
+  tests/                  79 tests, all mocked, run on any machine
 wavego_agent/             the motion foundation it stands on (see its README)
 ```
