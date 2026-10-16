@@ -83,8 +83,24 @@ cd ~/WAVEGO_Pro
 
 ```bash
 chmod +x pet/install_pet.sh
-sudo ./pet/install_pet.sh          # add --take-uart to auto-stop the
-                                   # ugv_rpi web app and claim the UART
+sudo ./pet/install_pet.sh          # interactive setup; --yes accepts defaults
+```
+
+**Setup choices** (asked interactively, or passed as flags — `--yes`
+accepts all defaults):
+
+| Choice | Flag | Options (default) |
+|---|---|---|
+| Camera MIPI port | `--camera` | `dsi1` (default) or `dsi0` |
+| Status LCD | `--display` | `none` (default) or the **other** connector — the camera takes one port, the display must take the other |
+| Display size | `--display-size` | `waveshare-2` 480x480 (default), `waveshare-2.8` 480x640, `waveshare-4` 720x720, `waveshare-7` 1024x600, or custom `WxH` |
+| Scene VLM (proposer) | `--vlm` | `host` (default — local llama-server) or `cloud` (needs `--vlm-url`, `--vlm-model`, `--vlm-api-key-env`) |
+| Validator | `--validator` | `software` (default — no second model) or `host`/`cloud` |
+
+Example — cloud VLM with a local validator model:
+
+```bash
+sudo ./pet/install_pet.sh --take-uart   --camera dsi1 --display dsi0 --display-size waveshare-4   --vlm cloud --vlm-url https://api.openai.com/v1   --vlm-model gpt-4o-mini --vlm-api-key-env OPENAI_API_KEY   --validator host --validator-url http://127.0.0.1:8081   --validator-model smolvlm2
 ```
 
 What it does (~15 min on the Pi, mostly the llama.cpp build + 1.8 GB model
@@ -107,6 +123,24 @@ UART. If the ugv_rpi web app (`wavego.service`) or the agent
 `--take-uart`. The pet's failsafe coverage: the motion supervisor's telemetry
 watchdog, bounded command queues, and pet-safe clamps (walks ≤ 2.5 s at
 speed ≤ 0.5, turns ≤ 1.5 s, no full-speed running, ever).
+
+### The validator rule (read this once)
+
+The VLM proposes what it sees; the validator double-checks the claim
+before the pet acts. **The same model may never serve as both** — one
+model grading its own homework is how hallucinated greetings happen.
+`petserve` refuses to start with such a config, and the installer errors
+out early. Your options:
+
+- `software` (default) — no second model: a claim must repeat on 2
+  consecutive frames before the pet acts (temporal consistency).
+- `host` — a second LOCAL model (any port/model, e.g. a small SmolVLM on
+  `:8081` while Qwen3-VL serves `:8080`).
+- `cloud` — a hosted OpenAI-compatible endpoint (API key read from the
+  env var you name).
+
+A validator that fails to answer downgrades the scene to "nothing seen":
+the pet stays calm.
 
 ## 6. Try it
 
@@ -198,7 +232,32 @@ in code — no config can make the pet sprint or jump-spam.
 - **Pet does nothing** — `--log-level DEBUG` in the service file; check the
   VLM replies are valid JSON (`journalctl -u wavego-pet | grep scene`).
 
-## 10. Layout
+## 10. Research notes — TinyVLM adoption
+
+Reviewed: [anananan116/TinyVLM](https://github.com/anananan116/TinyVLM)
+(MIT) — a 1.5B VLM (Llama-3.2-1B + frozen CLIP ViT-L/14 + MLP adapter,
+images pooled to 64 tokens) trained on 2x RTX 3090, scoring 1370 on MME.
+Its evals confirm what our design already bets on, and three of its
+techniques are adopted:
+
+- **Adopted — coarse spatial queries only.** TinyVLM is strong on
+  existence/color/scene, weak on OCR/count/position. Our scene prompt asks
+  exactly that: person yes/no, coarse position (left/center/right),
+  gesture — never counts or precise coordinates.
+- **Adopted — fixed small image budget + center-crop preprocessing.**
+  TinyVLM center-crops or pads to a fixed 448x448; our camera frames are
+  captured at 448x448 and `vision.fit_square()` squares any non-square
+  source the same way, keeping the vision-token bill (and Pi 5 encode
+  time) flat.
+- **Adopted — proposer/verifier split.** Small-VLM single-frame claims
+  are noisy; the validator layer (software consistency / second model)
+  is the mitigation, matching TinyVLM's low position reliability.
+- **Planned — fine-tune a pet-scene VLM from our own logs.** The JSONL
+  session logs are (frame, scene, action) triples: TinyVLM's two-stage
+  recipe (freeze vision encoder, train adapter, then SFT) is a viable path
+  to a smaller, faster, domain-tuned pet VLM later. Not built yet.
+
+## 11. Layout
 
 ```
 pet/
@@ -207,7 +266,8 @@ pet/
   pet_config.yaml         personality + hardware config (uart auto, display auto)
   wavego-pet.service      pet service (systemd template)
   wavego-pet-vlm.service  llama-server service (systemd template)
-  wavego_pet/             persona, vlm_client, vision, display, brain, petserve
-  tests/                  46 tests, all mocked, run on any machine
+  wavego_pet/             persona, vlm_client, validator, vision, display,
+                          systemstats, brain, petserve
+  tests/                  74 tests, all mocked, run on any machine
 wavego_agent/             the motion foundation it stands on (see its README)
 ```

@@ -32,16 +32,45 @@ TINY_JPEG = base64.b64decode(
 )
 
 
+def camera_num_for(port: str) -> int:
+    """MIPI connector name -> picamera2 camera number. The Pi 5 has two
+    connectors (silk-screened CAM/DISP 0 and 1); setup default is DSI1."""
+    port = (port or "dsi1").lower()
+    if port == "dsi0":
+        return 0
+    if port == "dsi1":
+        return 1
+    raise ValueError(f"unknown camera port: {port!r} (use dsi0 or dsi1)")
+
+
+def fit_square(frame):
+    """Square a frame without distorting it (TinyVLM preprocessing rule):
+    wide frames center-crop, tall frames center-crop too; already-square
+    frames pass through. Keeps the VLM's vision-token budget small and
+    avoids letterboxing artefacts."""
+    import numpy as np
+
+    h, w = frame.shape[:2]
+    if h == w:
+        return frame
+    side = min(h, w)
+    y0 = (h - side) // 2
+    x0 = (w - side) // 2
+    return np.ascontiguousarray(frame[y0:y0 + side, x0:x0 + side])
+
+
 class CameraFrames:
     """Live picamera2 source. start() imports picamera2 lazily so the package
     imports on any machine; capture happens on a tiny thread at ~2 fps."""
 
     def __init__(self, width: int = 448, height: int = 448,
-                 jpeg_quality: int = 80, interval_s: float = 0.5):
+                 jpeg_quality: int = 80, interval_s: float = 0.5,
+                 port: str = "dsi1"):
         self.width = width
         self.height = height
         self.jpeg_quality = jpeg_quality
         self.interval_s = interval_s
+        self.camera_num = camera_num_for(port)
         self._jpeg: bytes | None = None
         self._lock = threading.Lock()
         self._cam = None
@@ -51,7 +80,7 @@ class CameraFrames:
     def start(self) -> None:
         from picamera2 import Picamera2  # apt python3-picamera2; lazy by design
 
-        self._cam = Picamera2()
+        self._cam = Picamera2(camera_num=self.camera_num)
         cfg = self._cam.create_video_configuration(
             main={"size": (self.width, self.height), "format": "RGB888"})
         self._cam.configure(cfg)
@@ -66,7 +95,7 @@ class CameraFrames:
 
         while self._running:
             try:
-                frame = self._cam.capture_array()
+                frame = fit_square(self._cam.capture_array())
                 jpeg = _encode_jpeg(frame, self.jpeg_quality)
                 with self._lock:
                     self._jpeg = jpeg

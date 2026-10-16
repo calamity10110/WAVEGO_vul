@@ -62,3 +62,21 @@ def test_lcd_display_degrades_without_pygame(monkeypatch):
     assert d.active is False
     d.update("idle", "sees: nothing")   # no-op, no crash
     d.stop()
+
+
+# ------------------------------------------------------- layout scaling
+
+def test_layout_scales_with_display_size():
+    small = LCDDisplay(width=480, height=480).layout()
+    large = LCDDisplay(width=1024, height=600).layout()
+    assert small["title"] < large["title"]
+    assert small["row"] < large["row"]
+    assert large["title"] == int(600 * 0.10)
+    assert small["title"] == int(480 * 0.10)
+
+
+def test_layout_floors_are_legible():
+    tiny = LCDDisplay(width=100, height=100).layout()
+    assert tiny["title"] >= 16
+    assert tiny["text"] >= 11
+    assert tiny["stats"] >= 11

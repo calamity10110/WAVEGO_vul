@@ -16,6 +16,7 @@ from wavego_agent.schema import CommandRejected, parse_command
 from wavego_agent.supervisor import EStopActive, MotionSupervisor, QueueFullError
 
 from .persona import PetPersona, Scene
+from .systemstats import SystemStats
 from .vlm_client import VLMClient
 from .vision import CameraFrames
 
@@ -27,12 +28,14 @@ class PetBrain:
     def __init__(self, supervisor: MotionSupervisor, vlm: VLMClient,
                  frames: CameraFrames, persona: PetPersona | None = None,
                  clock=time.monotonic, scene_every_s: float = 12.0,
-                 on_event=None, display=None):
+                 on_event=None, display=None, validator=None, stats=None):
         self.supervisor = supervisor
         self.vlm = vlm
         self.frames = frames
         self.persona = persona or PetPersona()
         self.display = display            # optional LCDDisplay/NullDisplay
+        self.validator = validator        # optional second opinion
+        self.stats = stats                # optional SystemStats
         self._clock = clock
         self.scene_every_s = scene_every_s
         self._last_scene_t = -1e9
@@ -50,6 +53,8 @@ class PetBrain:
         scene = self.vlm.describe(jpeg)
         if scene is None:
             return False
+        if self.validator is not None:
+            scene = self.validator.confirm(scene, jpeg)
         self._last_scene_t = now
         self._dispatch(self.persona.update(scene, now), scene)
         self._refresh_display(scene)
@@ -64,12 +69,15 @@ class PetBrain:
                 voltage = self.supervisor.telemetry.poll().voltage_v
                 if voltage:
                     extra = f"battery {voltage:.1f} V"
+            stats_text = SystemStats.format(self.stats.poll()) \
+                if self.stats is not None else ""
             self.display.update(
                 state=self.persona.state.value,
                 scene=("sees: person {} ({})".format(
                     scene.position, scene.gesture)
                     if scene.person_visible else "sees: nothing"),
-                extra=extra)
+                extra=extra,
+                stats_text=stats_text)
         except Exception as exc:
             log.debug("display refresh failed: %s", exc)
 

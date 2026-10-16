@@ -25,6 +25,8 @@ from wavego_agent.transport import MockTransport, SerialTransport, resolve_seria
 from .brain import PetBrain
 from .display import LCDDisplay, NullDisplay, detect_dsi_display
 from .persona import PersonaConfig, PetPersona, Scene
+from .systemstats import SystemStats
+from .validator import ConfigError, build_validator, validate_llm_config
 from .vlm_client import FakeVLM, VLMClient
 from .vision import CameraFrames, StaticFrames
 
@@ -66,25 +68,32 @@ def build_components(cfg: dict, mock: bool):
         vlm_cfg = cfg.get("vlm") or {}
         vlm = VLMClient(url=vlm_cfg.get("url", "http://127.0.0.1:8080"),
                         model=vlm_cfg.get("model", "qwen3-vl-2b"),
-                        timeout_s=vlm_cfg.get("timeout_s", 120.0))
+                        timeout_s=vlm_cfg.get("timeout_s", 120.0),
+                        api_key_env=vlm_cfg.get("api_key_env"))
         cam_cfg = cfg.get("camera") or {}
         frames = CameraFrames(width=cam_cfg.get("width", 448),
                               height=cam_cfg.get("height", 448),
-                              jpeg_quality=cam_cfg.get("jpeg_quality", 80))
+                              jpeg_quality=cam_cfg.get("jpeg_quality", 80),
+                              port=cam_cfg.get("port", "dsi1"))
         telemetry = None
     return transport, vlm, frames, telemetry, persona
 
 
 def build_display(cfg: dict, mock: bool):
-    """auto: use the DSI LCD only when one is attached (DSI0 or DSI1)."""
-    dsi = detect_dsi_display()
+    """Use the DSI LCD only when configured AND attached. Port/size come
+    from the installer's setup choices (camera takes one MIPI connector,
+    the display must use the OTHER one)."""
     if mock:
         return NullDisplay()
-    enabled = (cfg.get("display") or {}).get("enabled", "auto")
+    dcfg = cfg.get("display") or {}
+    enabled = dcfg.get("enabled", "auto")
+    dsi = detect_dsi_display()
     if enabled is True or (enabled == "auto" and dsi):
         if dsi:
-            log.info("DSI display detected: %s", dsi)
-        return LCDDisplay()
+            log.info("DSI display detected: %s (configured port %s)",
+                     dsi, dcfg.get("port", "n/a"))
+        return LCDDisplay(width=int(dcfg.get("width", 480)),
+                          height=int(dcfg.get("height", 480)))
     if enabled == "auto":
         log.info("no DSI display detected — status UI skipped")
     return NullDisplay()
@@ -140,9 +149,31 @@ def run_doctor(cfg: dict) -> int:
         print(f"  WARN: {url} not responding ({exc});")
         print("  systemctl status wavego-pet-vlm  # first load takes ~1 min")
 
+    print("\n[vision models]")
+    vlm_cfg = cfg.get("vlm") or {}
+    val_cfg = cfg.get("validator") or {}
+    print(f"  VLM (proposer):  {vlm_cfg.get('provider', 'host')} "
+          f"{vlm_cfg.get('url', '')} {vlm_cfg.get('model', '')}")
+    print(f"  validator:       {val_cfg.get('provider', 'software')} "
+          f"{val_cfg.get('url', '') or ''} {val_cfg.get('model', '') or ''}")
+    try:
+        validate_llm_config(vlm_cfg, val_cfg)
+        print("  OK: validator model differs from VLM")
+    except ConfigError as exc:
+        print(f"  FAIL: {exc}")
+
+    print("\n[camera port]")
+    print(f"  configured: {(cfg.get('camera') or {}).get('port', 'dsi1')} "
+          "(picamera2 opens the matching camera number)")
+
     print("\n[DSI LCD] (optional status display, DSI0 or DSI1)")
     dsi = detect_dsi_display()
-    print(f"  {'OK: ' + dsi if dsi else 'not attached (status UI disabled)'}")
+    dcfg = cfg.get("display") or {}
+    if dsi:
+        print(f"  OK: {dsi} — configured {dcfg.get('width', 480)}x"
+              f"{dcfg.get('height', 480)} on port {dcfg.get('port', 'n/a')}")
+    else:
+        print("  not attached (status UI disabled)")
 
     print("\n[local camera stack] (picamera2)")
     try:
@@ -176,6 +207,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.doctor:
         return run_doctor(cfg)
 
+    try:
+        validate_llm_config(cfg.get("vlm") or {}, cfg.get("validator") or {})
+        validator = build_validator(cfg.get("validator") or {})
+    except ConfigError as exc:
+        print(f"config error: {exc}", file=sys.stderr)
+        return 2
+
     transport, vlm, frames, telemetry, persona = build_components(cfg, args.mock)
     display = build_display(cfg, args.mock)
     supervisor = MotionSupervisor(
@@ -186,7 +224,8 @@ def main(argv: list[str] | None = None) -> int:
         supervisor, vlm, frames, persona,
         scene_every_s=args.scene_every
         or (cfg.get("brain") or {}).get("scene_every_s", 12.0),
-        display=display)
+        display=display, validator=validator,
+        stats=None if args.mock else SystemStats())
 
     supervisor.start()
     if not args.mock:

@@ -1,26 +1,52 @@
-# wavego_pet configuration — defaults are conservative on purpose.
-# Personality knobs live under persona; hardware paths under vlm/uart/camera.
+# wavego_pet configuration. The installer's setup questions write their
+# answers here (camera port, display, models); everything below is the
+# default it starts from. Personality knobs live under persona.
 
-# ESP32 control board connection. device "auto" prefers the board's USB
-# port (/dev/ttyACM*, /dev/ttyUSB*), then falls back to the GPIO UART
-# (/dev/ttyAMA0 on a Pi 5, /dev/serial0 otherwise). Only ONE process may
-# hold the connection: stop the ugv_rpi web app before running the pet.
-uart:
-  device: auto      # or an explicit path, e.g. /dev/ttyUSB0
-  baud: 115200
-
-# llama-server serving Qwen3-VL-2B-Instruct GGUF (see install_pet.sh)
-vlm:
-  url: "http://127.0.0.1:8080"
-  model: "qwen3-vl-2b"
-  timeout_s: 120.0
-
-# Camera frames sized for the vision encoder: small frames encode several
-# times faster on the Pi's CPU with no behavioral loss for pet vision.
+# Camera MIPI connector. The Pi 5 has two (silk-screened CAM/DISP 0 and 1);
+# setup default is DSI1. The display, if used, must take the OTHER one.
 camera:
-  width: 448
+  port: dsi1          # dsi0 | dsi1
+  width: 448          # small frames = fewer vision tokens = faster on CPU
   height: 448
   jpeg_quality: 80
+
+# Optional DSI LCD status card: pet state, last scene, CPU/RAM/temp —
+# laid out for the configured size. Default none; port must differ from
+# camera.port. enabled: auto turns it on only when a display is attached.
+display:
+  enabled: false      # false | auto | true
+  port: dsi0
+  width: 480
+  height: 480
+
+# ESP32 control board connection. device "auto" prefers the board's USB
+# port (/dev/ttyACM*, /dev/ttyUSB*), then the GPIO UART (/dev/ttyAMA0 on a
+# Pi 5, /dev/serial0 otherwise). Only ONE process may hold the link: stop
+# the ugv_rpi web app before running the pet (or --take-uart at install).
+uart:
+  device: auto        # or an explicit path, e.g. /dev/ttyUSB0
+  baud: 115200
+
+# Scene PROPOSER — the model that looks at frames. host = local
+# llama-server, cloud = any OpenAI-compatible endpoint.
+vlm:
+  provider: host      # host | cloud
+  url: "http://127.0.0.1:8080"
+  model: "qwen3-vl-2b"
+  api_key_env: null   # cloud: env var holding the API key, e.g. OPENAI_API_KEY
+  timeout_s: 120.0
+
+# Scene VALIDATOR — a SECOND opinion on what the VLM claims. It may NEVER
+# be the same model as the VLM (petserve refuses to start); use a different
+# model/endpoint, or the software validator (no second model: a claim must
+# repeat on N consecutive frames before the pet acts on it).
+validator:
+  provider: software    # software | host | cloud
+  url: null
+  model: null
+  api_key_env: null
+  timeout_s: 60.0
+  confirm_threshold: 2  # software: consecutive consistent scenes required
 
 brain:
   # seconds between VLM scene questions. On a Pi 5 one scene costs ~10-20 s
@@ -44,12 +70,6 @@ persona:
 
 motion:
   rate_hz: 30.0
-
-# Optional DSI LCD status screen (works on either MIPI connector, DSI0 or
-# DSI1). "auto" enables it only when a display is detected; false disables
-# even if attached; true forces it (errors disable gracefully).
-display:
-  enabled: auto
 
 logging:
   # JSONL command/event log; null disables file logging

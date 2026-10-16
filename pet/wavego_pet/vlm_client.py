@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 
 import requests
@@ -87,12 +88,17 @@ class VLMClient:
     def __init__(self, url: str = "http://127.0.0.1:8080",
                  model: str = "qwen3-vl-2b", timeout_s: float = 120.0,
                  temperature: float = DEFAULT_TEMPERATURE,
-                 max_tokens: int = DEFAULT_MAX_TOKENS):
+                 max_tokens: int = DEFAULT_MAX_TOKENS,
+                 api_key_env: str | None = None):
         self.url = url.rstrip("/")
         self.model = model
         self.timeout_s = timeout_s
         self.temperature = temperature
         self.max_tokens = max_tokens
+        # cloud endpoints: name of an env var holding the API key
+        self._api_key = os.environ.get(api_key_env) if api_key_env else None
+        if api_key_env and not self._api_key:
+            raise ValueError(f"api key env var {api_key_env} is not set")
         self._busy = False
         self.last_latency_s: float | None = None
 
@@ -103,6 +109,9 @@ class VLMClient:
             return None
         self._busy = True
         try:
+            headers = {}
+            if self._api_key:
+                headers["Authorization"] = f"Bearer {self._api_key}"
             payload = {
                 "model": self.model,
                 "messages": [
@@ -119,7 +128,8 @@ class VLMClient:
             }
             t0 = time.monotonic()
             resp = requests.post(f"{self.url}/v1/chat/completions",
-                                 json=payload, timeout=self.timeout_s)
+                                 json=payload, headers=headers,
+                                 timeout=self.timeout_s)
             resp.raise_for_status()
             text = resp.json()["choices"][0]["message"]["content"]
             self.last_latency_s = time.monotonic() - t0

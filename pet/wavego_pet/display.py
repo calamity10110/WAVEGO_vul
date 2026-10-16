@@ -47,9 +47,10 @@ class NullDisplay:
 
 class LCDDisplay:
     """Fullscreen status card on the DSI LCD: pet name, current state,
-    last scene summary, and an optional extra line (e.g. battery)."""
+    last scene summary, system stats (CPU/RAM/temp), extra line. The
+    layout scales to the configured display size/resolution."""
 
-    def __init__(self, width: int = 720, height: int = 540,
+    def __init__(self, width: int = 480, height: int = 480,
                  title: str = "WAVEGO PET"):
         self.width = width
         self.height = height
@@ -58,6 +59,18 @@ class LCDDisplay:
         self._screen = None
         self._fonts: list = []
         self._active = False
+
+    def layout(self) -> dict:
+        """Font pixel sizes + row geometry, proportional to the panel."""
+        h, w = self.height, self.width
+        return {
+            "title": max(16, int(h * 0.10)),
+            "state": max(14, int(h * 0.085)),
+            "text": max(11, int(h * 0.055)),
+            "stats": max(11, int(h * 0.05)),
+            "row": h // 6,
+            "pad": max(8, w // 30),
+        }
 
     def start(self) -> None:
         try:
@@ -69,8 +82,11 @@ class LCDDisplay:
             pygame.init()
             self._screen = pygame.display.set_mode((self.width, self.height))
             pygame.font.init()
-            self._fonts = [pygame.font.SysFont(None, size)
-                           for size in (72, 48, 34)]
+            lay = self.layout()
+            self._fonts = [pygame.font.SysFont(None, lay["title"]),
+                           pygame.font.SysFont(None, lay["state"]),
+                           pygame.font.SysFont(None, lay["text"]),
+                           pygame.font.SysFont(None, lay["stats"])]
             self._pygame = pygame
             self._active = True
             log.info("status display on DSI LCD (%dx%d)", self.width,
@@ -83,24 +99,31 @@ class LCDDisplay:
     def active(self) -> bool:
         return self._active
 
-    def update(self, state: str, scene: str = "", extra: str = "") -> None:
+    def update(self, state: str, scene: str = "", extra: str = "",
+               stats_text: str = "") -> None:
         if not self._active:
             return
         try:
             pg = self._pygame
+            lay = self.layout()
             self._screen.fill((13, 15, 20))
-            lines = [
+            rows = [
                 (self.title, (240, 240, 240), self._fonts[0]),
                 (state.upper(), (120, 220, 120), self._fonts[1]),
                 (scene, (200, 200, 200), self._fonts[2]),
                 (extra, (230, 200, 120), self._fonts[2]),
             ]
-            y = self.height // 8
-            for text, color, font in lines:
+            y = lay["pad"]
+            for text, color, font in rows:
                 if text:
                     surf = font.render(str(text), True, color)
-                    self._screen.blit(surf, (24, y))
-                y += self.height // 5
+                    self._screen.blit(surf, (lay["pad"], y))
+                y += lay["row"]
+            if stats_text:
+                surf = self._fonts[3].render(stats_text, True,
+                                             (140, 180, 240))
+                self._screen.blit(surf, (lay["pad"],
+                                         self.height - lay["stats"] - 6))
             pg.display.flip()
         except Exception as exc:
             log.debug("display update failed: %s", exc)

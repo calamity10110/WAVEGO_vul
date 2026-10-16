@@ -109,8 +109,8 @@ class FakeDisplay:
     def __init__(self):
         self.updates = []
 
-    def update(self, state, scene="", extra=""):
-        self.updates.append((state, scene, extra))
+    def update(self, state, scene="", extra="", stats_text=""):
+        self.updates.append((state, scene, extra, stats_text))
 
 
 def test_brain_updates_display_after_each_scene():
@@ -129,7 +129,7 @@ def test_brain_updates_display_after_each_scene():
     clock.t += 1
     brain.tick()
     assert display.updates, "display not refreshed"
-    state, scene, _ = display.updates[0]
+    state, scene, _, _ = display.updates[0]
     assert state == persona.state.value
     assert "person" in scene
 
@@ -149,3 +149,30 @@ def test_brain_display_failures_are_swallowed():
                      persona, clock=clock, scene_every_s=12.0, display=Broken())
     clock.t += 1
     brain.tick()            # must not raise
+
+
+# --------------------------------------------------- validator pipeline
+
+def test_flaky_vlm_claims_stabilized_by_software_validator():
+    # VLM alternates person/nothing: threshold 2 means nothing is ever
+    # confirmed, so the pet must not greet
+    from wavego_pet.persona import Scene as S
+    from wavego_pet.validator import SoftwareValidator
+
+    brain, supervisor, transport, clock, _ = make_brain(
+        [S(person_visible=True), S(), S(person_visible=True), S()])
+    brain.validator = SoftwareValidator(confirm_threshold=2)
+    drain(brain, supervisor, clock, n=8)
+    assert transport.sent == []
+
+
+def test_stable_person_claim_passes_validator_and_greets():
+    from wavego_pet.persona import Scene as S
+    from wavego_pet.validator import SoftwareValidator
+
+    brain, supervisor, transport, clock, _ = make_brain(
+        [S(person_visible=True, position="center")])
+    brain.validator = SoftwareValidator(confirm_threshold=2)
+    # scene 1: not confirmed (first claim); scene 2 (12 s later): confirmed
+    drain(brain, supervisor, clock, n=30, dt=1.0)
+    assert {"T": 111, "FB": 1, "LR": 0} in transport.sent

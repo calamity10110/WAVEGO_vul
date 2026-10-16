@@ -68,9 +68,10 @@ class FakeResponse:
 
 def patch_post(monkeypatch, capture,
                content='{"person":true,"position":"center","gesture":"none"}'):
-    def fake_post(url, json=None, timeout=None):
+    def fake_post(url, json=None, headers=None, timeout=None):
         capture["url"] = url
         capture["payload"] = json
+        capture["headers"] = headers
         capture["timeout"] = timeout
         return FakeResponse(content)
 
@@ -90,6 +91,26 @@ def test_describe_builds_openai_vision_payload(monkeypatch):
     image_parts = [p for p in messages[1]["content"] if p["type"] == "image_url"]
     assert image_parts[0]["image_url"]["url"].startswith("data:image/jpeg;base64,")
     assert capture["payload"]["max_tokens"] <= 80
+    assert capture["headers"] == {}          # host endpoint: no auth header
+
+
+def test_describe_cloud_sends_bearer_token(monkeypatch):
+    monkeypatch.setenv("TEST_VLM_KEY", "sk-secret")
+    capture = {}
+    patch_post(monkeypatch, capture)
+    client = VLMClient(url="https://api.example.com/v1", model="gpt-4o-mini",
+                       api_key_env="TEST_VLM_KEY")
+    client.describe(b"x")
+    assert capture["headers"]["Authorization"] == "Bearer sk-secret"
+
+
+def test_missing_api_key_env_fails_loudly_at_build():
+    import pytest
+
+    from wavego_pet.vlm_client import VLMClient as C
+
+    with pytest.raises(ValueError):
+        C(api_key_env="DEFINITELY_NOT_SET_ENV_VAR")
 
 
 def test_describe_failure_returns_none_not_crash(monkeypatch):
