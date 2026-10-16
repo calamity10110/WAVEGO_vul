@@ -5,6 +5,7 @@ use fake detectors so the pipeline behavior is covered without cv2.
 """
 
 import numpy as np
+import pytest
 
 from wavego_pet.vision import FrameChangeDetector
 
@@ -49,17 +50,30 @@ def test_threshold_zero_reports_any_change():
     assert d.changed_frame(frame_with(101)) is True
 
 
-def test_changed_jpeg_decodes_or_fails_true():
+def test_changed_jpeg_decodes_when_cv2_present():
+    pytest.importorskip("cv2")
     from wavego_pet.vision import TINY_JPEG
 
     d = FrameChangeDetector()
-    try:
-        import cv2  # noqa: F401
+    assert d.changed_jpeg(TINY_JPEG) is True       # first frame
+    assert d.changed_jpeg(TINY_JPEG) is False      # same image
 
-        assert d.changed_jpeg(TINY_JPEG) is True       # first frame
-        assert d.changed_jpeg(TINY_JPEG) is False      # same image
-    except ImportError:
-        assert d.changed_jpeg(TINY_JPEG) is True       # no cv2: assume change
+
+def test_changed_jpeg_assumes_change_without_cv2(monkeypatch):
+    import builtins
+
+    real_import = builtins.__import__
+
+    def no_cv2(name, *a, **k):
+        if name == "cv2" or name.startswith("cv2."):
+            raise ImportError("cv2 blocked")
+        return real_import(name, *a, **k)
+
+    from wavego_pet.vision import TINY_JPEG
+
+    d = FrameChangeDetector()
+    monkeypatch.setattr(builtins, "__import__", no_cv2)
+    assert d.changed_jpeg(TINY_JPEG) is True       # cannot decode: assume change
 
 
 # -------------------------------------------------- brain change gating
@@ -158,3 +172,30 @@ def test_warmup_swallows_failure_and_reports():
                         on_event=events.append)
     brain_ok.warmup()
     assert any(e["event"] == "warmup_done" for e in events)
+
+
+def test_changed_frame_works_without_cv2():
+    # regression: CI has no cv2 — the numpy path must not touch it
+    import builtins
+
+    real_import = builtins.__import__
+
+    def no_cv2(name, *args, **kwargs):
+        if name.startswith("cv2"):
+            raise ImportError("cv2 not installed")
+        return real_import(name, *args, **kwargs)
+
+    import wavego_pet.vision as vc
+
+    saved = dict(vc.__dict__)
+    d = FrameChangeDetector(threshold=3.0)
+    monkey = pytest.MonkeyPatch()
+    monkey.setattr(builtins, "__import__", no_cv2)
+    try:
+        assert d.changed_frame(frame_with(100)) is True
+        assert d.changed_frame(frame_with(100)) is False
+        assert d.changed_frame(frame_with(160)) is True
+    finally:
+        monkey.undo()
+        vc.__dict__.clear()
+        vc.__dict__.update(saved)

@@ -173,9 +173,11 @@ class FrameChangeDetector:
         return diff > self.threshold
 
     def changed_jpeg(self, jpeg_bytes: bytes) -> bool:
-        import cv2
-        import numpy as np
-
+        try:
+            import cv2
+            import numpy as np
+        except ImportError:
+            return True   # cannot decode without cv2: assume scene changed
         frame = cv2.imdecode(np.frombuffer(jpeg_bytes, np.uint8),
                              cv2.IMREAD_COLOR)
         if frame is None:
@@ -184,10 +186,22 @@ class FrameChangeDetector:
 
 
 def _thumb(frame, size: int):
-    """Grayscale thumbnail, lenient about the capture's channel layout."""
-    import cv2
+    """Grayscale thumbnail via pure numpy — must not need cv2 so the
+    change gate works (and tests run) on any box."""
+    import numpy as np
 
-    if frame.ndim == 3 and frame.shape[2] >= 3:
-        frame = frame[:, :, :3]
-    gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-    return cv2.resize(gray, (size, size))
+    arr = np.asarray(frame)
+    if arr.ndim == 3:
+        arr = arr[..., :3]
+        # BT.601 luma; float so the later abs-diff is smooth
+        gray = arr @ np.array([0.299, 0.587, 0.114], dtype=np.float32)
+    else:
+        gray = arr.astype(np.float32)
+    h, w = gray.shape
+    if h < size or w < size:
+        rows = np.linspace(0, h - 1, size).astype(int)
+        cols = np.linspace(0, w - 1, size).astype(int)
+        return gray[np.ix_(rows, cols)]
+    ch, cw = h // size, w // size
+    return gray[:ch * size, :cw * size] \
+        .reshape(size, ch, size, cw).mean(axis=(1, 3))
