@@ -113,6 +113,12 @@ def translate(cmd: SemanticCommand, state: TranslatorState | None = None) -> lis
         native.append(dict(JUMP_CMD))
         return native
 
+    if cmd.action == "look":
+        # cmdPtCtrl reads X/Y only (main.cpp dispatch table); SPD/ACC that
+        # base_ctrl.gimbal_ctrl sends are ignored by the firmware for T:133.
+        native.append({"T": 133, "X": cmd.pan, "Y": cmd.tilt})
+        return native
+
     raise TypeError(f"unhandled command type: {type(cmd).__name__}")
 
 

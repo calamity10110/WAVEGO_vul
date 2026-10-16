@@ -37,8 +37,8 @@ jobs:
           python agent/test_fuzz.py 1337 5000
           python agent/redteam_verdict.py
 
-      - name: ugv_rpi + wavego_agent unit tests (pure subset; heavy Pi deps stubbed)
-        run: python -m pytest ugv_rpi/tests wavego_agent/tests -q
+      - name: ugv_rpi + wavego_agent + pet unit tests (pure subset; heavy Pi deps stubbed)
+        run: python -m pytest ugv_rpi/tests wavego_agent/tests pet/tests -q
 
       - name: Package rpi5 bundle
         run: |

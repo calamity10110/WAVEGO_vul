@@ -103,3 +103,14 @@ def test_cadence_not_resent_when_unchanged():
     out3 = translate(parse_command({"action": "walk", "direction": "left",
                                     "speed": 0.5, "duration": 1}), st)
     assert out3[0]["T"] == 115  # back toward default cadence -> emit again
+
+
+# ------------------------------------------------------------------- look
+
+def test_look_maps_to_pt_ctrl():
+    assert t({"action": "look", "pan": -30, "tilt": 10}) \
+        == [{"T": 133, "X": -30, "Y": 10}]
+
+
+def test_look_defaults_centered():
+    assert t({"action": "look"}) == [{"T": 133, "X": 0, "Y": 0}]

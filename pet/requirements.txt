@@ -1,0 +1,6 @@
+# wavego_pet runtime deps. Keep this list pip-only-light: picamera2 and
+# OpenCV come from APT on Raspberry Pi OS (install_pet.sh), never pip.
+requests>=2.28
+pydantic>=2.0
+PyYAML>=6.0
+pyserial>=3.5

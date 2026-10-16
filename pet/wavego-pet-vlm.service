@@ -1,0 +1,20 @@
+[Unit]
+Description=WAVEGO pet — Qwen3-VL-2B vision server (llama-server)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+ExecStart=__LLAMA_DIR__/build/bin/llama-server \
+  -m __MODEL__ \
+  --mmproj __MMPROJ__ \
+  --host 127.0.0.1 --port 8080 \
+  --jinja -c 4096 -t 4
+Restart=on-failure
+RestartSec=5
+# the 2B model + vision encoder fit comfortably in 8 GB; guard the rest
+MemoryHigh=4G
+
+[Install]
+WantedBy=multi-user.target

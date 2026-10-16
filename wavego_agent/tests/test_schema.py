@@ -129,3 +129,12 @@ def test_rejection_message_names_the_field():
 def test_non_dict_input_rejected():
     with pytest.raises(CommandRejected):
         parse_command("walk forward please")
+
+
+def test_look_ranges_enforced():
+    from wavego_agent.schema import parse_command as pc
+    assert pc({"action": "look", "pan": 180, "tilt": -30}).tilt == -30
+    with pytest.raises(CommandRejected):
+        pc({"action": "look", "pan": 181})
+    with pytest.raises(CommandRejected):
+        pc({"action": "look", "tilt": 31})

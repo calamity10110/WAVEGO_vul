@@ -1,0 +1,49 @@
+# wavego_pet configuration — defaults are conservative on purpose.
+# Personality knobs live under persona; hardware paths under vlm/uart/camera.
+
+# UART to the ESP32. device: null picks /dev/ttyAMA0 on a Pi 5, /dev/serial0
+# otherwise (same rule as the failsafe daemon). Only ONE process may hold
+# the UART: stop the ugv_rpi web app before running the pet (see README).
+uart:
+  device: null
+  baud: 115200
+
+# llama-server serving Qwen3-VL-2B-Instruct GGUF (see install_pet.sh)
+vlm:
+  url: "http://127.0.0.1:8080"
+  model: "qwen3-vl-2b"
+  timeout_s: 120.0
+
+# Camera frames sized for the vision encoder: small frames encode several
+# times faster on the Pi's CPU with no behavioral loss for pet vision.
+camera:
+  width: 448
+  height: 448
+  jpeg_quality: 80
+
+brain:
+  # seconds between VLM scene questions. On a Pi 5 one scene costs ~10-20 s
+  # (image encode + ~30 tokens at 4-5 tok/s); do not go below ~10.
+  scene_every_s: 12.0
+
+# Persona tuning — all durations clamped to pet-safe bounds in code
+# (walk <= 2.5 s @ speed <= 0.5, turn <= 1.5 s) no matter what goes here.
+persona:
+  greet_cooldown_s: 60.0    # min seconds between excited greetings
+  trick_cooldown_s: 30.0    # min seconds between jump tricks
+  follow_cooldown_s: 5.0    # min seconds between follow bursts
+  follow_walk_s: 1.2
+  follow_speed: 0.35
+  greet_walk_s: 1.2
+  greet_speed: 0.4
+  greet_trick: true         # jump as part of the greeting
+  fidget_after_s: 45.0      # alone this long -> glance around
+  sleep_after_s: 300.0      # alone this long -> sit and sleep
+  follow_turn_s: 0.6        # blind turn toward an off-center person
+
+motion:
+  rate_hz: 30.0
+
+logging:
+  # JSONL command/event log; null disables file logging
+  jsonl_path: null

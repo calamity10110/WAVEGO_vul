@@ -1,0 +1,17 @@
+[Unit]
+Description=WAVEGO robot pet (vision-driven persona on the motion supervisor)
+Requires=wavego-pet-vlm.service
+After=wavego-pet-vlm.service
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__PET_DIR__
+ExecStart=__PET_DIR__/venv/bin/python -m wavego_pet.petserve \
+  --config __PET_DIR__/pet_config.yaml
+Restart=on-failure
+RestartSec=10
+# on stop: petserve sends a final sit + emergency stop over the UART
+
+[Install]
+WantedBy=multi-user.target

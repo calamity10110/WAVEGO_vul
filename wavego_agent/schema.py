@@ -87,8 +87,19 @@ class Approach(_Command):
     target: Annotated[str, Field(min_length=1, max_length=64)]
 
 
+class Look(_Command):
+    """Gimbal pan/tilt (pet expressiveness: glance at things).
+    Firmware ranges via CMD_PT_CTRL -> BodyCtrl::ptCtrl: X (pan) in
+    [-180, 180], Y (tilt) in [-30, 30]; ptCtrl maps them to +-30/+-17.5 deg
+    of physical gimbal travel."""
+
+    action: Literal["look"]
+    pan: Annotated[float, Field(ge=-180.0, le=180.0)] = 0.0
+    tilt: Annotated[float, Field(ge=-30.0, le=30.0)] = 0.0
+
+
 SemanticCommand = Annotated[
-    Union[Walk, Run, Turn, Jump, Stand, Sit, Stop, Approach],
+    Union[Walk, Run, Turn, Jump, Stand, Sit, Stop, Approach, Look],
     Field(discriminator="action"),
 ]
 
