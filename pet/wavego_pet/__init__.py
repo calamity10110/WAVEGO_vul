@@ -6,12 +6,15 @@ for the fresh-RPi5-OS installation guide.
 """
 
 from .brain import PetBrain
+from .display import LCDDisplay, NullDisplay, detect_dsi_display
 from .persona import PersonaConfig, PetPersona, PetState, Scene
 from .vlm_client import FakeVLM, VLMClient, extract_json, scene_from_reply
 from .vision import CameraFrames, StaticFrames, TINY_JPEG
 
 __all__ = [
     "CameraFrames",
+    "LCDDisplay",
+    "NullDisplay",
     "FakeVLM",
     "PetBrain",
     "PersonaConfig",
@@ -21,6 +24,7 @@ __all__ = [
     "StaticFrames",
     "TINY_JPEG",
     "VLMClient",
+    "detect_dsi_display",
     "extract_json",
     "scene_from_reply",
 ]

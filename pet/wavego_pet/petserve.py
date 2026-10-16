@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import subprocess
 import sys
 import time
 
@@ -19,9 +20,10 @@ import yaml
 from wavego_agent.jsonl import JsonlLogger
 from wavego_agent.supervisor import MotionSupervisor
 from wavego_agent.telemetry import MockTelemetry
-from wavego_agent.transport import MockTransport, SerialTransport
+from wavego_agent.transport import MockTransport, SerialTransport, resolve_serial_device
 
 from .brain import PetBrain
+from .display import LCDDisplay, NullDisplay, detect_dsi_display
 from .persona import PersonaConfig, PetPersona, Scene
 from .vlm_client import FakeVLM, VLMClient
 from .vision import CameraFrames, StaticFrames
@@ -57,7 +59,10 @@ def build_components(cfg: dict, mock: bool):
         telemetry = MockTelemetry()
     else:
         uart = cfg.get("uart") or {}
-        transport = SerialTransport(uart.get("device"), uart.get("baud", 115200))
+        device = resolve_serial_device(uart.get("device", "auto"))
+        log.info("ESP32 control board on %s (USB or GPIO UART, auto-resolved)",
+                 device)
+        transport = SerialTransport(device, uart.get("baud", 115200))
         vlm_cfg = cfg.get("vlm") or {}
         vlm = VLMClient(url=vlm_cfg.get("url", "http://127.0.0.1:8080"),
                         model=vlm_cfg.get("model", "qwen3-vl-2b"),
@@ -68,6 +73,85 @@ def build_components(cfg: dict, mock: bool):
                               jpeg_quality=cam_cfg.get("jpeg_quality", 80))
         telemetry = None
     return transport, vlm, frames, telemetry, persona
+
+
+def build_display(cfg: dict, mock: bool):
+    """auto: use the DSI LCD only when one is attached (DSI0 or DSI1)."""
+    dsi = detect_dsi_display()
+    if mock:
+        return NullDisplay()
+    enabled = (cfg.get("display") or {}).get("enabled", "auto")
+    if enabled is True or (enabled == "auto" and dsi):
+        if dsi:
+            log.info("DSI display detected: %s", dsi)
+        return LCDDisplay()
+    if enabled == "auto":
+        log.info("no DSI display detected — status UI skipped")
+    return NullDisplay()
+
+
+def _try_run(cmd: list[str], timeout_s: float = 15.0) -> str | None:
+    try:
+        out = subprocess.run(cmd, capture_output=True, text=True,
+                             timeout=timeout_s, check=False)
+        return out.stdout.strip() or out.stderr.strip() or ""
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def run_doctor(cfg: dict) -> int:
+    """Hardware preflight: camera port, ESP32 connection, VLM, DSI LCD."""
+    print("wavego pet — hardware doctor")
+    print("-" * 50)
+
+    print("\n[camera] (CAM0/CAM1 — either MIPI connector works)")
+    out = (_try_run(["rpicam-hello", "--list-cameras"])
+           or _try_run(["rpicam-still", "--list-cameras"]))
+    if out is None:
+        print("  SKIP: rpicam tools not available (dev box?)")
+    elif out and "no cameras" not in out.lower():
+        print(f"  OK:\n{out}")
+    else:
+        print("  FAIL: no camera detected.")
+        print("  - re-seat the ribbon: contacts toward the board, blue")
+        print("    stiffener facing the latch; CAM0 and CAM1 both work —")
+        print("    try the other connector, then re-run this doctor.")
+
+    print("\n[ESP32 control board] (USB or GPIO UART)")
+    uart_cfg = (cfg.get("uart") or {}).get("device", "auto")
+    resolved = resolve_serial_device(uart_cfg)
+    print(f"  resolved device: {resolved} (config: {uart_cfg})")
+    if resolved.startswith(("/dev/ttyACM", "/dev/ttyUSB")):
+        print("  OK: ESP32 connected over USB")
+    else:
+        print("  WARN: no USB serial found; using the GPIO UART.")
+        print("  - if you meant USB: check the cable, and that you are in")
+        print("    the dialout group (install_pet.sh adds you).")
+        print("  - if wired to pins: TX/RX crossed, GND common, UART enabled")
+
+    print("\n[VLM] (llama-server with Qwen3-VL-2B)")
+    url = ((cfg.get("vlm") or {}).get("url", "http://127.0.0.1:8080")).rstrip("/")
+    try:
+        import requests
+
+        requests.get(f"{url}/v1/models", timeout=5).raise_for_status()
+        print(f"  OK: {url} responding")
+    except Exception as exc:
+        print(f"  WARN: {url} not responding ({exc});")
+        print("  systemctl status wavego-pet-vlm  # first load takes ~1 min")
+
+    print("\n[DSI LCD] (optional status display, DSI0 or DSI1)")
+    dsi = detect_dsi_display()
+    print(f"  {'OK: ' + dsi if dsi else 'not attached (status UI disabled)'}")
+
+    print("\n[local camera stack] (picamera2)")
+    try:
+        import picamera2  # noqa: F401
+
+        print("  OK: picamera2 importable")
+    except ImportError:
+        print("  SKIP: picamera2 not importable (dev box?)")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -81,14 +165,19 @@ def main(argv: list[str] | None = None) -> int:
                         help="seconds to run (0 = forever)")
     parser.add_argument("--scene-every", type=float, default=None,
                         help="override scene cadence (s)")
+    parser.add_argument("--doctor", action="store_true",
+                        help="check camera, ESP32 connection, VLM, DSI LCD and exit")
     parser.add_argument("--log-level", default="INFO")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=args.log_level.upper(),
                         format="%(asctime)s [pet] %(levelname)s %(message)s")
     cfg = load_config(args.config)
+    if args.doctor:
+        return run_doctor(cfg)
 
     transport, vlm, frames, telemetry, persona = build_components(cfg, args.mock)
+    display = build_display(cfg, args.mock)
     supervisor = MotionSupervisor(
         transport, telemetry=telemetry,
         logger=JsonlLogger((cfg.get("logging") or {}).get("jsonl_path")),
@@ -96,7 +185,8 @@ def main(argv: list[str] | None = None) -> int:
     brain = PetBrain(
         supervisor, vlm, frames, persona,
         scene_every_s=args.scene_every
-        or (cfg.get("brain") or {}).get("scene_every_s", 12.0))
+        or (cfg.get("brain") or {}).get("scene_every_s", 12.0),
+        display=display)
 
     supervisor.start()
     if not args.mock:
@@ -119,6 +209,7 @@ def main(argv: list[str] | None = None) -> int:
         supervisor.emergency_stop("shutdown")
         if not args.mock and frames is not None and hasattr(frames, "stop"):
             frames.stop()
+        display.stop()
         supervisor.stop()
         if args.mock:
             log.info("wire transcript:\n%s",

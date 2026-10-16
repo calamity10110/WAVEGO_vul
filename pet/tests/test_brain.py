@@ -101,3 +101,51 @@ def test_estop_swallows_pet_commands():
     supervisor.emergency_stop("test")
     drain(brain, supervisor, clock, n=5)      # must not raise
     assert supervisor.estop_active
+
+
+# ---------------------------------------------------------- display wiring
+
+class FakeDisplay:
+    def __init__(self):
+        self.updates = []
+
+    def update(self, state, scene="", extra=""):
+        self.updates.append((state, scene, extra))
+
+
+def test_brain_updates_display_after_each_scene():
+    clock = Clock()
+    transport = MockTransport()
+    transport.open()
+    supervisor = MotionSupervisor(transport, telemetry=MockTelemetry(),
+                                  clock=clock)
+    persona = PetPersona(PersonaConfig(), clock=clock)
+    display = FakeDisplay()
+    brain = PetBrain(supervisor, FakeVLM(
+        [__import__("wavego_pet.persona", fromlist=["Scene"]).Scene(
+            person_visible=True, position="left", gesture="none")]),
+        StaticFrames([TINY_JPEG]), persona, clock=clock,
+        scene_every_s=12.0, display=display)
+    clock.t += 1
+    brain.tick()
+    assert display.updates, "display not refreshed"
+    state, scene, _ = display.updates[0]
+    assert state == persona.state.value
+    assert "person" in scene
+
+
+def test_brain_display_failures_are_swallowed():
+    class Broken:
+        def update(self, *a, **k):
+            raise RuntimeError("DRM exploded")
+
+    clock = Clock()
+    transport = MockTransport()
+    transport.open()
+    supervisor = MotionSupervisor(transport, telemetry=MockTelemetry(),
+                                  clock=clock)
+    persona = PetPersona(PersonaConfig(), clock=clock)
+    brain = PetBrain(supervisor, FakeVLM([]), StaticFrames([TINY_JPEG]),
+                     persona, clock=clock, scene_every_s=12.0, display=Broken())
+    clock.t += 1
+    brain.tick()            # must not raise

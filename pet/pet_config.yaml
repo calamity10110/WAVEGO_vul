@@ -1,11 +1,12 @@
 # wavego_pet configuration — defaults are conservative on purpose.
 # Personality knobs live under persona; hardware paths under vlm/uart/camera.
 
-# UART to the ESP32. device: null picks /dev/ttyAMA0 on a Pi 5, /dev/serial0
-# otherwise (same rule as the failsafe daemon). Only ONE process may hold
-# the UART: stop the ugv_rpi web app before running the pet (see README).
+# ESP32 control board connection. device "auto" prefers the board's USB
+# port (/dev/ttyACM*, /dev/ttyUSB*), then falls back to the GPIO UART
+# (/dev/ttyAMA0 on a Pi 5, /dev/serial0 otherwise). Only ONE process may
+# hold the connection: stop the ugv_rpi web app before running the pet.
 uart:
-  device: null
+  device: auto      # or an explicit path, e.g. /dev/ttyUSB0
   baud: 115200
 
 # llama-server serving Qwen3-VL-2B-Instruct GGUF (see install_pet.sh)
@@ -43,6 +44,12 @@ persona:
 
 motion:
   rate_hz: 30.0
+
+# Optional DSI LCD status screen (works on either MIPI connector, DSI0 or
+# DSI1). "auto" enables it only when a display is detected; false disables
+# even if attached; true forces it (errors disable gracefully).
+display:
+  enabled: auto
 
 logging:
   # JSONL command/event log; null disables file logging

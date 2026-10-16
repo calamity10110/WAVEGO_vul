@@ -7,6 +7,10 @@ After=wavego-pet-vlm.service
 Type=simple
 User=__USER__
 WorkingDirectory=__PET_DIR__
+# DSI LCD status UI (no X server; SDL talks straight to the DRM backend).
+# Harmless when no display or pygame is present.
+Environment=SDL_VIDEODRIVER=kmsdrm
+Environment=SDL_NOMOUSE=1
 ExecStart=__PET_DIR__/venv/bin/python -m wavego_pet.petserve \
   --config __PET_DIR__/pet_config.yaml
 Restart=on-failure

@@ -27,11 +27,12 @@ class PetBrain:
     def __init__(self, supervisor: MotionSupervisor, vlm: VLMClient,
                  frames: CameraFrames, persona: PetPersona | None = None,
                  clock=time.monotonic, scene_every_s: float = 12.0,
-                 on_event=None):
+                 on_event=None, display=None):
         self.supervisor = supervisor
         self.vlm = vlm
         self.frames = frames
         self.persona = persona or PetPersona()
+        self.display = display            # optional LCDDisplay/NullDisplay
         self._clock = clock
         self.scene_every_s = scene_every_s
         self._last_scene_t = -1e9
@@ -51,7 +52,26 @@ class PetBrain:
             return False
         self._last_scene_t = now
         self._dispatch(self.persona.update(scene, now), scene)
+        self._refresh_display(scene)
         return True
+
+    def _refresh_display(self, scene: Scene) -> None:
+        if self.display is None:
+            return
+        try:
+            extra = ""
+            if self.supervisor.telemetry is not None:
+                voltage = self.supervisor.telemetry.poll().voltage_v
+                if voltage:
+                    extra = f"battery {voltage:.1f} V"
+            self.display.update(
+                state=self.persona.state.value,
+                scene=("sees: person {} ({})".format(
+                    scene.position, scene.gesture)
+                    if scene.person_visible else "sees: nothing"),
+                extra=extra)
+        except Exception as exc:
+            log.debug("display refresh failed: %s", exc)
 
     def _dispatch(self, raw_commands: list[dict], scene: Scene) -> None:
         for raw in raw_commands:

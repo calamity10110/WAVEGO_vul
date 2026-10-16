@@ -43,7 +43,35 @@ The camera needs nothing extra on Bookworm — `picamera2` ships with the OS.
 
 If you previously ran `ugv_rpi/setup.sh`, the UART is already configured.
 
-## 3. Get this repo onto the Pi
+## 3. Hardware hookup
+
+**Camera — CAM0 or CAM1, both work.** The Pi 5 has two MIPI connectors
+(silk-screened CAM/DISP 0 and 1); the camera runs on either. Seat the
+ribbon with the metal contacts facing the board and the blue stiffener
+facing the latch's pull-tab. The installer verifies detection and prints
+which port it found (`rpicam-hello --list-cameras`).
+
+**ESP32 control board — USB or UART, your choice.**
+
+- *USB (recommended for bring-up)*: a cable from the board's USB port to a
+  Pi USB port. It appears as `/dev/ttyACM*` or `/dev/ttyUSB*` — no pins, no
+  raspi-config, and the same JSON protocol.
+- *UART*: the classic 3-wire hookup to the GPIO header — ESP32 TX → Pi RX,
+  ESP32 RX → Pi TX (crossed!), GND → GND.
+
+The pet's config ships with `uart.device: auto`, which prefers the USB
+device when one is present and falls back to the GPIO UART
+(`/dev/ttyAMA0` on Pi 5). Force one explicitly in `pet_config.yaml` if you
+have both connected. The installer adds your user to the `dialout` group
+(needed for USB serial) — log out and back in after install.
+
+**Optional DSI LCD — DISP0 or DISP1, either works.** If a DSI display is
+attached when the installer runs, it installs the status UI automatically
+(You'll see the pet's state, what it last saw, and battery voltage on the
+screen). Not attached? Add it anytime and re-run the installer. Disable it
+without unplugging via `display.enabled: false` in `pet_config.yaml`.
+
+## 4. Get this repo onto the Pi
 
 ```bash
 sudo apt install -y git
@@ -51,7 +79,7 @@ git clone <your-fork-url> ~/WAVEGO_Pro
 cd ~/WAVEGO_Pro
 ```
 
-## 4. Install the pet (one command)
+## 5. Install the pet (one command)
 
 ```bash
 chmod +x pet/install_pet.sh
@@ -65,11 +93,13 @@ download):
 | Step | What | Where |
 |---|---|---|
 | 1 | apt: `python3-picamera2`, `python3-opencv`, build tools | system |
+| 2 | hardware checks: camera port, ESP32 link (USB/UART), optional DSI LCD | printed to console |
 | 2 | builds llama.cpp (CPU, native) | `/opt/llama.cpp` |
 | 3 | downloads [Qwen3-VL-2B-Instruct-GGUF](https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct-GGUF): `Q4_K_M` (~1.1 GB) + `mmproj-Q8_0` vision encoder | `/opt/wavego-pet/models` |
 | 4 | venv (`--system-site-packages` so apt OpenCV/camera work) | `/opt/wavego-pet/venv` |
 | 5 | deploys `pet/` + `wavego_agent/` + config | `/opt/wavego-pet` |
-| 6 | two systemd services | `wavego-pet-vlm` (the VLM), `wavego-pet` (the pet) |
+| 6 | deploys pet + wavego_agent + config | `/opt/wavego-pet` |
+| 7 | two systemd services | `wavego-pet-vlm` (the VLM), `wavego-pet` (the pet) |
 
 **UART ownership (important):** exactly one process may hold the ESP32's
 UART. If the ugv_rpi web app (`wavego.service`) or the agent
@@ -78,7 +108,7 @@ UART. If the ugv_rpi web app (`wavego.service`) or the agent
 watchdog, bounded command queues, and pet-safe clamps (walks ≤ 2.5 s at
 speed ≤ 0.5, turns ≤ 1.5 s, no full-speed running, ever).
 
-## 5. Try it
+## 6. Try it
 
 **Without hardware (any machine, no camera/VLM/UART):**
 
@@ -87,7 +117,17 @@ python -m wavego_pet.petserve --mock --duration 70
 # prints the exact wire transcript the ESP32 would receive
 ```
 
-**On the Pi — vision smoke test first:**
+**On the Pi — full hardware doctor first:**
+
+```bash
+/opt/wavego-pet/venv/bin/python -m wavego_pet.petserve --doctor
+```
+
+Checks the camera (and prints which MIPI port it's on), the ESP32
+connection (USB or GPIO UART), the VLM endpoint, and the DSI LCD — PASS,
+WARN or SKIP per line, with fix hints on WARN.
+
+**Vision smoke test:**
 
 ```bash
 sudo /opt/llama.cpp/build/bin/llama-mtmd-cli \
@@ -111,7 +151,7 @@ toward/turns
 after you, glances around when bored, and sits down to sleep after 5 quiet
 minutes. Walk away — it dozes. Walk back — it wakes.
 
-## 6. Everyday commands
+## 7. Everyday commands
 
 ```bash
 sudo systemctl stop wavego-pet        # park the pet (sends a final sit + stop)
@@ -126,7 +166,7 @@ Change its personality: edit `/opt/wavego-pet/pet_config.yaml`
 `sudo systemctl restart wavego-pet`. All values are clamped to safe bounds
 in code — no config can make the pet sprint or jump-spam.
 
-## 7. What to expect (honest numbers)
+## 8. What to expect (honest numbers)
 
 | Thing | Value on Pi 5 (8 GB) |
 |---|---|
@@ -136,29 +176,38 @@ in code — no config can make the pet sprint or jump-spam.
 | Pet "reaction time" | seconds, not frames — like a real pet deciding to care |
 | Motion loop | independent 30 Hz; VLM slowness never blocks movement |
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
-- **`camera capture failed` in the log** — `vcgencmd get_camera` should say
-  `detected=1`; reseat the ribbon (metal contacts facing the board).
+- **`camera capture failed` / doctor says no camera** — run
+  `rpicam-hello --list-cameras`; if empty, reseat the ribbon (metal
+  contacts facing the board, blue stiffener facing the latch) and try the
+  other MIPI connector — CAM0/DSI0 and CAM1/DSI1 are equivalent on the Pi 5.
 - **VLM timeouts** — `systemctl status wavego-pet-vlm`; first model load
   takes ~30–60 s after boot before the pet's first scene succeeds.
-- **`Serial ... PermissionError` / no motion** — something else owns the
-  UART: `sudo systemctl stop wavego.service wavego-agent.service`, or
-  re-run the installer with `--take-uart`.
+- **`Serial ... PermissionError` / no motion** — run the doctor. If USB:
+  make sure you're in the `dialout` group (installer adds it; re-login).
+  If the ugv_rpi web app or agent owns the link:
+  `sudo systemctl stop wavego.service wavego-agent.service`, or re-run the
+  installer with `--take-uart`.
+- **Status LCD blank** — doctor prints the DRM connector when a DSI display
+  is detected; if it is but the screen stays dark, check `display.enabled`
+  in `pet_config.yaml` is not `false`, and that `python3-pygame` is
+  installed (the installer adds it only when a display is present).
 - **OOM / killing other services** — the pet needs ~2.5 GB total; don't run
   it alongside the web UI + agent stack on the same boot.
 - **Pet does nothing** — `--log-level DEBUG` in the service file; check the
   VLM replies are valid JSON (`journalctl -u wavego-pet | grep scene`).
 
-## 9. Layout
+## 10. Layout
 
 ```
 pet/
-  install_pet.sh          fresh-OS installer (this guide, automated)
-  pet_config.yaml         personality + hardware config
+  install_pet.sh          fresh-OS installer (this guide, automated; also
+                          verifies camera, ESP32 link, and DSI LCD)
+  pet_config.yaml         personality + hardware config (uart auto, display auto)
   wavego-pet.service      pet service (systemd template)
   wavego-pet-vlm.service  llama-server service (systemd template)
-  wavego_pet/             persona, vlm_client, vision, brain, petserve
-  tests/                  37 tests, all mocked, run on any machine
+  wavego_pet/             persona, vlm_client, vision, display, brain, petserve
+  tests/                  46 tests, all mocked, run on any machine
 wavego_agent/             the motion foundation it stands on (see its README)
 ```

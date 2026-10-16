@@ -73,6 +73,35 @@ def default_uart_device(is_pi5: Callable[[], bool] | None = None) -> str:
     return "/dev/ttyAMA0" if is_pi5() else "/dev/serial0"
 
 
+def resolve_serial_device(device: str | None = None,
+                          exists: Callable[[str], bool] | None = None,
+                          globfn: Callable[[str], list] | None = None) -> str:
+    """Resolve which device node talks to the ESP32 control board.
+
+    The board can be connected either through its USB port (shows up as
+    /dev/ttyACM* or /dev/ttyUSB*) or wired to the GPIO UART (/dev/ttyAMA0
+    on a Pi 5, /dev/serial0 otherwise). An explicit ``device`` always wins;
+    ``None``/``"auto"`` prefers USB (simplest bring-up, no pin conflicts),
+    then falls back to the GPIO UART.
+    """
+    if device and device != "auto":
+        return device
+    if exists is None:
+        import os
+
+        exists = os.path.exists
+    if globfn is None:
+        import glob
+
+        globfn = glob.glob
+    for pattern in ("/dev/ttyACM*", "/dev/ttyUSB*"):
+        hits = sorted(globfn(pattern))
+        for hit in hits:
+            if exists(hit):
+                return hit
+    return default_uart_device()
+
+
 class SerialTransport(Transport):
     """Real UART. pyserial is imported in open() so the package imports
     cleanly anywhere. One owner, one port, newline-framed JSON."""
