@@ -105,12 +105,19 @@ def test_cadence_not_resent_when_unchanged():
     assert out3[0]["T"] == 115  # back toward default cadence -> emit again
 
 
-# ------------------------------------------------------------------- look
+# ------------------------------------------------------------------- lean
 
-def test_look_maps_to_pt_ctrl():
-    assert t({"action": "look", "pan": -30, "tilt": 10}) \
-        == [{"T": 133, "X": -30, "Y": 10}]
+def test_lean_uses_firmware_body_degree_ranges():
+    # full-scale lean hits the exact mapDouble corner values
+    assert t({"action": "lean", "pitch": 17.5, "yaw": -30}) == [
+        {"T": 133, "X": -180.0, "Y": -30.0}]
 
 
-def test_look_defaults_centered():
-    assert t({"action": "look"}) == [{"T": 133, "X": 0, "Y": 0}]
+def test_lean_pitch_up_negates_firmware_sign():
+    # firmware +pitch = nose down; pet pitch +10 = nose up -> Y negative
+    assert t({"action": "lean", "pitch": 10.0}) == [
+        {"T": 133, "X": 0.0, "Y": -17.14}]
+
+
+def test_lean_defaults_level():
+    assert t({"action": "lean"}) == [{"T": 133, "X": 0.0, "Y": 0.0}]

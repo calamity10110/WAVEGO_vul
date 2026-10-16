@@ -56,6 +56,25 @@ class Cadence:
 
 DEFAULT_CADENCE = Cadence(delay_ms=5)
 
+# Body-lean (T:133) — BodyCtrl::ptCtrl maps the wire values to body degrees:
+#   X in [-180, 180] -> body yaw  in [-30, 30]    (mapDouble(X, -180, 180, -30, 30))
+#   Y in [-30, 30]   -> body pitch in [-17.5, 17.5] (mapDouble(Y, -30, 30, -17.5, 17.5))
+# pitchYawRoll raises the FRONT legs for positive pitch = nose DOWN, so the
+# pet-facing "pitch up" negates here. Flip the signs if the mounted camera
+# reads the lean opposite once verified on hardware.
+BODY_YAW_MAX = 30.0
+BODY_PITCH_MAX = 17.5
+LEAN_YAW_SIGN = 1.0
+LEAN_PITCH_SIGN = -1.0
+
+
+def lean_native(pitch: float, yaw: float) -> dict:
+    """Body-degree lean -> T:133 wire values (exact inverse of the
+    firmware's mapDouble scalings)."""
+    x = (yaw / BODY_YAW_MAX) * 180.0 * LEAN_YAW_SIGN
+    y = (pitch / BODY_PITCH_MAX) * 30.0 * LEAN_PITCH_SIGN
+    return {"T": 133, "X": round(x, 2), "Y": round(y, 2)}
+
 
 def cadence_for_speed(speed: float) -> Cadence:
     """Map normalized speed [0,1] to gait cadence. 0.5 -> firmware defaults.
@@ -113,10 +132,8 @@ def translate(cmd: SemanticCommand, state: TranslatorState | None = None) -> lis
         native.append(dict(JUMP_CMD))
         return native
 
-    if cmd.action == "look":
-        # cmdPtCtrl reads X/Y only (main.cpp dispatch table); SPD/ACC that
-        # base_ctrl.gimbal_ctrl sends are ignored by the firmware for T:133.
-        native.append({"T": 133, "X": cmd.pan, "Y": cmd.tilt})
+    if cmd.action == "lean":
+        native.append(lean_native(cmd.pitch, cmd.yaw))
         return native
 
     raise TypeError(f"unhandled command type: {type(cmd).__name__}")

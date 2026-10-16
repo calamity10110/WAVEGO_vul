@@ -105,8 +105,9 @@ journalctl -u wavego-pet -f        # watch it think
 journalctl -u wavego-pet-vlm -f    # watch the VLM
 ```
 
-Hold something up to the camera and wave. The pet greets new people (walk +
-look up + jump), does a spin trick when you wave, shuffles toward/turns
+Hold something up to the camera and wave. The pet greets new people (walk
++ leans up toward you + jump), does a spin trick when you wave, shuffles
+toward/turns
 after you, glances around when bored, and sits down to sleep after 5 quiet
 minutes. Walk away — it dozes. Walk back — it wakes.
 

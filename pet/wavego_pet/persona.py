@@ -6,8 +6,8 @@ testable, and every command it emits is clamped to pet-safe bounds BEFORE
 the supervisor's validator sees it.
 
 Behavior rules (pet-like, safety-first):
-- Sleeping: wakes (stand + look up) when a person appears; otherwise silent.
-- Greeting: person appears -> short forward walk + look up + (jump if the
+- Sleeping: wakes (stand + lean up) when a person appears; otherwise silent.
+- Greeting: person appears -> short forward walk + lean up + (jump if the
   trick cooldown allows). Greeting is rate-limited; a pet that pounces every
   tick is a hazard, not a pet.
 - Playing: wave gesture -> trick (jump + spin), on a cooldown.
@@ -102,8 +102,11 @@ class PetPersona:
                 "duration": min(self.cfg.follow_turn_s, MAX_TURN_DURATION_S)}
 
     @staticmethod
-    def _look(pan: float = 0.0, tilt: float = 0.0) -> dict:
-        return {"action": "look", "pan": pan, "tilt": tilt}
+    def _lean(pitch: float = 0.0, yaw: float = 0.0) -> dict:
+        """Body-lean expression (no gimbal on this robot): pitch + = nose
+        up, yaw + = nose left, in firmware body degrees (pitch <= 17.5,
+        yaw <= 30)."""
+        return {"action": "lean", "pitch": pitch, "yaw": yaw}
 
     # ---------------------------------------------------------------- tick
 
@@ -128,7 +131,7 @@ class PetPersona:
             if scene.person_visible:
                 self.state = PetState.IDLE
                 self._last_person_seen = now
-                return [{"action": "stand"}, self._look(0.0, 10.0)]
+                return [{"action": "stand"}, self._lean(pitch=10.0)]
             return []
 
         if self.state is PetState.IDLE:
@@ -142,7 +145,7 @@ class PetPersona:
             self._last_greet = now
             self.state = PetState.GREETING
             cmds = [self._walk("forward", cfg.greet_walk_s, cfg.greet_speed),
-                    self._look(0.0, 10.0)]
+                    self._lean(pitch=10.0)]
             if cfg.greet_trick and now - self._last_trick >= cfg.trick_cooldown_s:
                 self._last_trick = now
                 cmds.append({"action": "jump"})
@@ -171,6 +174,6 @@ class PetPersona:
         if idle_for >= cfg.fidget_after_s and now - self._last_fidget >= cfg.fidget_after_s:
             self._last_fidget = now
             self._fidget_side *= -1
-            return [self._look(pan=40.0 * self._fidget_side, tilt=0.0)]
+            return [self._lean(yaw=20.0 * self._fidget_side)]
 
         return []

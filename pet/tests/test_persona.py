@@ -52,7 +52,7 @@ def test_wakes_when_person_appears():
     out = p.update(seen(), now=clock["t"])
     assert p.state is PetState.IDLE
     assert out[0] == {"action": "stand"}
-    assert out[1]["action"] == "look" and out[1]["tilt"] > 0
+    assert out[1]["action"] == "lean" and out[1]["pitch"] > 0
 
 
 def test_sleeping_pet_ignores_empty_scenes():
@@ -72,7 +72,7 @@ def test_greets_when_person_appears():
     assert p.state is PetState.GREETING
     walks = cmds_only(out, "walk")
     assert walks and walks[0]["direction"] == "forward"
-    assert any(c["action"] == "look" for c in out)
+    assert any(c["action"] == "lean" and c["pitch"] > 0 for c in out)
     assert any(c["action"] == "jump" for c in out)   # first greet gets a jump
 
 
@@ -155,8 +155,8 @@ def test_fidgets_when_bored_but_not_sleepy():
     p.update(seen(), now=clock["t"])
     clock["t"] += 50
     out = p.update(Scene(), now=clock["t"])
-    looks = cmds_only(out, "look")
-    assert looks and looks[0]["pan"] != 0
+    leans = cmds_only(out, "lean")
+    assert leans and leans[0]["yaw"] != 0
     assert p.state is PetState.IDLE                  # not asleep yet
 
 
@@ -168,7 +168,7 @@ def test_nothing_ever_exceeds_pet_safe_bounds(position):
     scene = seen(position=position, gesture="wave")
     for _ in range(40):
         for raw in p.update(scene, now=clock["t"]):
-            assert raw["action"] in ("walk", "turn", "look", "jump", "stand",
+            assert raw["action"] in ("walk", "turn", "lean", "jump", "stand",
                                      "sit", "stop")
             if raw["action"] == "walk":
                 assert raw["speed"] <= MAX_WALK_SPEED

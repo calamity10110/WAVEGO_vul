@@ -87,19 +87,21 @@ class Approach(_Command):
     target: Annotated[str, Field(min_length=1, max_length=64)]
 
 
-class Look(_Command):
-    """Gimbal pan/tilt (pet expressiveness: glance at things).
-    Firmware ranges via CMD_PT_CTRL -> BodyCtrl::ptCtrl: X (pan) in
-    [-180, 180], Y (tilt) in [-30, 30]; ptCtrl maps them to +-30/+-17.5 deg
-    of physical gimbal travel."""
+class Lean(_Command):
+    """Body-lean expression — this robot has NO camera gimbal; T:133
+    re-poses all four legs via BodyCtrl::pitchYawRoll. Body-degree ranges
+    from BodyCtrl::ptCtrl's mapDouble calls: yaw in [-30, 30], pitch in
+    [-17.5, 17.5]. Positive pitch = nose UP (the firmware's own pitch is
+    nose-down; translate.py negates it). Sign convention should be
+    confirmed on hardware once."""
 
-    action: Literal["look"]
-    pan: Annotated[float, Field(ge=-180.0, le=180.0)] = 0.0
-    tilt: Annotated[float, Field(ge=-30.0, le=30.0)] = 0.0
+    action: Literal["lean"]
+    pitch: Annotated[float, Field(ge=-17.5, le=17.5)] = 0.0
+    yaw: Annotated[float, Field(ge=-30.0, le=30.0)] = 0.0
 
 
 SemanticCommand = Annotated[
-    Union[Walk, Run, Turn, Jump, Stand, Sit, Stop, Approach, Look],
+    Union[Walk, Run, Turn, Jump, Stand, Sit, Stop, Approach, Lean],
     Field(discriminator="action"),
 ]
 

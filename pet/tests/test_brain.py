@@ -70,7 +70,7 @@ def test_person_appearance_flows_through_to_motion():
     # first-greet trick) then the walk's stop
     native = transport.sent
     assert {"T": 111, "FB": 1, "LR": 0} in native          # walk gait
-    assert {"T": 133, "X": 0.0, "Y": 10.0} in native       # look up
+    assert {"T": 133, "X": 0.0, "Y": -17.14} in native     # lean up
     assert {"T": 112, "func": 3} in native                 # jump
     assert any(e["event"] == "pet_command" for e in events)
 

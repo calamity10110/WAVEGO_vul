@@ -131,10 +131,10 @@ def test_non_dict_input_rejected():
         parse_command("walk forward please")
 
 
-def test_look_ranges_enforced():
+def test_lean_ranges_enforced():
     from wavego_agent.schema import parse_command as pc
-    assert pc({"action": "look", "pan": 180, "tilt": -30}).tilt == -30
+    assert pc({"action": "lean", "pitch": 17.5, "yaw": -30}).yaw == -30
     with pytest.raises(CommandRejected):
-        pc({"action": "look", "pan": 181})
+        pc({"action": "lean", "pitch": 17.6})
     with pytest.raises(CommandRejected):
-        pc({"action": "look", "tilt": 31})
+        pc({"action": "lean", "yaw": 30.1})
