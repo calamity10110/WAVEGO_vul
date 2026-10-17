@@ -139,10 +139,18 @@ def translate(cmd: SemanticCommand, state: TranslatorState | None = None) -> lis
     raise TypeError(f"unhandled command type: {type(cmd).__name__}")
 
 
-def reset_cadence(st: TranslatorState) -> TranslatorState:
-    """Forget any cadence override (call after stop/stand — the firmware keeps
-    its STEP_DELAY, but reverting to defaults keeps AI-driven sessions on the
-    verified-safe cadence)."""
+def reset_cadence(st: TranslatorState) -> tuple[TranslatorState, dict | None]:
+    """Restore the default gait cadence after a behavior ends.
+
+    Returns (new_state, restore_cmd): restore_cmd is the T:115 native command
+    that puts the firmware back on the default cadence, or None when the
+    firmware was already there. The firmware keeps its STEP_DELAY across
+    behaviors, so the tracked state must not be reset without telling the
+    firmware — otherwise the supervisor believes defaults while the robot
+    still gaits at the previous cadence.
+    """
     if st.cadence != DEFAULT_CADENCE:
-        return replace(st, cadence=DEFAULT_CADENCE)
-    return st
+        cmd = {"T": 115, "delay": DEFAULT_CADENCE.delay_ms,
+               "iterate": DEFAULT_CADENCE.iterate}
+        return replace(st, cadence=DEFAULT_CADENCE), cmd
+    return st, None

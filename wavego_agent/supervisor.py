@@ -371,7 +371,9 @@ class MotionSupervisor:
                 self.logger.log({"event": "done", "behavior": self._current.name})
                 self._current = None
                 self._current_started = False
-                self._tstate = reset_cadence(self._tstate)
+                self._tstate, restore = reset_cadence(self._tstate)
+                if restore is not None:
+                    self._send(restore)
 
     def _handle_estop(self) -> None:
         """Estop consequences: stop once, drop everything. Idempotent; runs

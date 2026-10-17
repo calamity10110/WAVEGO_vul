@@ -247,7 +247,13 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         if supervisor.estop_active:
             supervisor.clear_estop()
-        supervisor.submit({"action": "sit"}) if not supervisor.estop_active else None
+        if not supervisor.estop_active:
+            try:
+                supervisor.submit({"action": "sit"})
+            except Exception:
+                # The motion queue is bounded; a full queue at shutdown must
+                # not skip the emergency stop below.
+                log.warning("shutdown sit command dropped", exc_info=True)
         time.sleep(1.0)                       # let the sit command play out
         supervisor.emergency_stop("shutdown")
         if not args.mock and frames is not None and hasattr(frames, "stop"):

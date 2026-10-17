@@ -91,10 +91,12 @@ def test_turn_rejects_out_of_range():
 # -------------------------------------------------------------- approach
 
 def test_approach_turns_toward_target():
-    left = approach_step(-40, lost_frames=0)
-    assert (left.turn_lr, left.walk_fb, left.done) == (-1, 0, False)
-    right = approach_step(40, lost_frames=0)
+    # Bearing convention: positive = target to the left (matches
+    # heading_delta and plan_approach). Negative bearing -> turn right.
+    right = approach_step(-40, lost_frames=0)
     assert (right.turn_lr, right.walk_fb, right.done) == (1, 0, False)
+    left = approach_step(40, lost_frames=0)
+    assert (left.turn_lr, left.walk_fb, left.done) == (-1, 0, False)
 
 
 def test_approach_walks_on_bearing():

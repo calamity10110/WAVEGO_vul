@@ -36,23 +36,23 @@ VALIDATOR_PROVIDER="software"  # setup choice 5: second opinion (software|host|c
 VALIDATOR_URL="" VALIDATOR_MODEL="" VALIDATOR_KEY_ENV=""
 ASSUME_YES=0
 
-for arg in "$@"; do
-  case "$arg" in
-    --skip-build) SKIP_BUILD=1 ;;
-    --take-uart)  TAKE_UART=1 ;;
-    --yes|-y)     ASSUME_YES=1 ;;
-    --camera)     CAMERA_PORT="$2"; shift ;;
-    --display)    DISPLAY_PORT="$2"; shift ;;
-    --display-size) DISPLAY_SIZE="$2"; shift ;;
-    --vlm)        VLM_PROVIDER="$2"; shift ;;
-    --vlm-url)    VLM_URL="$2"; shift ;;
-    --vlm-model)  VLM_MODEL="$2"; shift ;;
-    --vlm-api-key-env) VLM_KEY_ENV="$2"; shift ;;
-    --validator)  VALIDATOR_PROVIDER="$2"; shift ;;
-    --validator-url) VALIDATOR_URL="$2"; shift ;;
-    --validator-model) VALIDATOR_MODEL="$2"; shift ;;
-    --validator-api-key-env) VALIDATOR_KEY_ENV="$2"; shift ;;
-    *) echo "unknown option: $arg"; exit 2 ;;
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --skip-build) SKIP_BUILD=1; shift ;;
+    --take-uart)  TAKE_UART=1; shift ;;
+    --yes|-y)     ASSUME_YES=1; shift ;;
+    --camera)     CAMERA_PORT="${2:?--camera needs a value}"; shift 2 ;;
+    --display)    DISPLAY_PORT="${2:?--display needs a value}"; shift 2 ;;
+    --display-size) DISPLAY_SIZE="${2:?--display-size needs a value}"; shift 2 ;;
+    --vlm)        VLM_PROVIDER="${2:?--vlm needs a value}"; shift 2 ;;
+    --vlm-url)    VLM_URL="${2:?--vlm-url needs a value}"; shift 2 ;;
+    --vlm-model)  VLM_MODEL="${2:?--vlm-model needs a value}"; shift 2 ;;
+    --vlm-api-key-env) VLM_KEY_ENV="${2:?--vlm-api-key-env needs a value}"; shift 2 ;;
+    --validator)  VALIDATOR_PROVIDER="${2:?--validator needs a value}"; shift 2 ;;
+    --validator-url) VALIDATOR_URL="${2:?--validator-url needs a value}"; shift 2 ;;
+    --validator-model) VALIDATOR_MODEL="${2:?--validator-model needs a value}"; shift 2 ;;
+    --validator-api-key-env) VALIDATOR_KEY_ENV="${2:?--validator-api-key-env needs a value}"; shift 2 ;;
+    *) echo "unknown option: $1"; exit 2 ;;
   esac
 done
 

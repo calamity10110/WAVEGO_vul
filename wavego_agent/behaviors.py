@@ -97,9 +97,9 @@ def approach_step(bearing_deg: float | None, lost_frames: int,
     if bearing_deg is None:
         return ApproachStep(0, 0, False, "hold last gait, frame dropped")
     if bearing_deg < -BEARING_TOLERANCE_DEG:
-        return ApproachStep(-1, 0, False, "turn left toward target")
-    if bearing_deg > BEARING_TOLERANCE_DEG:
         return ApproachStep(1, 0, False, "turn right toward target")
+    if bearing_deg > BEARING_TOLERANCE_DEG:
+        return ApproachStep(-1, 0, False, "turn left toward target")
     return ApproachStep(0, 1, False, "on bearing, walking")
 
 

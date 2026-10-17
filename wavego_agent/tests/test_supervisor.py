@@ -212,7 +212,7 @@ def test_approach_aims_then_walks_then_stops_on_loss():
 
     sup.update_target_bearing(-40.0)
     sup.tick()
-    assert tr.wire_lines[-1] == '{"T":111,"FB":0,"LR":-1}\n'  # aim left
+    assert tr.wire_lines[-1] == '{"T":111,"FB":0,"LR":1}\n'   # aim right (target at -40°)
 
     sup.update_target_bearing(0.0)
     sup.tick()
@@ -233,7 +233,7 @@ def test_approach_only_writes_when_gait_changes():
     sup.update_target_bearing(-40.0)
     sup.tick()
     n = len(tr.wire_lines)
-    sup.update_target_bearing(-35.0)              # still on the left turn
+    sup.update_target_bearing(-35.0)              # still on the right turn
     sup.tick()
     assert len(tr.wire_lines) == n
 

@@ -8,6 +8,7 @@ from wavego_agent.schema import parse_command
 from wavego_agent.translate import (
     DEFAULT_CADENCE,
     cadence_for_speed,
+    reset_cadence,
     translate,
     TranslatorState,
 )
@@ -103,6 +104,26 @@ def test_cadence_not_resent_when_unchanged():
     out3 = translate(parse_command({"action": "walk", "direction": "left",
                                     "speed": 0.5, "duration": 1}), st)
     assert out3[0]["T"] == 115  # back toward default cadence -> emit again
+
+
+def test_reset_cadence_emits_firmware_restore():
+    # After a fast behavior the firmware still holds the fast STEP_DELAY;
+    # reset must hand back a T:115 that actually restores defaults.
+    st = TranslatorState()
+    translate(parse_command({"action": "run", "direction": "forward",
+                             "speed": 1.0, "duration": 1}), st)
+    assert st.cadence != DEFAULT_CADENCE
+    st2, restore = reset_cadence(st)
+    assert st2.cadence == DEFAULT_CADENCE
+    assert restore == {"T": 115, "delay": DEFAULT_CADENCE.delay_ms,
+                       "iterate": DEFAULT_CADENCE.iterate}
+
+
+def test_reset_cadence_noop_when_already_default():
+    st = TranslatorState()
+    st2, restore = reset_cadence(st)
+    assert restore is None
+    assert st2.cadence == DEFAULT_CADENCE
 
 
 # ------------------------------------------------------------------- lean
