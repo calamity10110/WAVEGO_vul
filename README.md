@@ -55,6 +55,8 @@ The upper computer communicates with the lower computer (the robot's driver base
 | `ugv_rpi/voice/` | Persistent voice assistant (Moonshine ONNX ASR + phrase grammar) — installer: `ugv_rpi/install_voice.sh` |
 | `ugv_rpi/vlm_ctrl/` | VLM goal control: onboard Intern-Decision engine, verification stack, latency benchmark — installer: `ugv_rpi/install_vlm.sh` |
 | `agent/` | Embodied agent stack: hex validator, safety gates, VLM client, dashboard, learner — installer: `agent/install_agent.sh` |
+| `wavego_agent/` | Motion supervisor library: semantic-command validation, behavior layer, ESP32 translation, single UART owner — consumed by `pet/` |
+| `pet/` | WAVEGO Pet app: Qwen3-VL vision, brain/persona, display — drives the robot through `wavego_agent` — installer: `pet/install_pet.sh` |
 | `state_table.yaml` | Agent single source of truth: hex codebook (cross-checked against the instruction table), safety thresholds, tunables |
 | `wavego_pro_instruction_table.xlsx` / `.json` | Complete JSON command reference: 47 commands, feedback formats, unused/dead code audit |
 
@@ -163,7 +165,8 @@ On a clean Raspberry Pi OS (Bookworm), with the camera ribbon connected, downloa
     #   -> 1 (install), any key, 9 (exit)
     sudo reboot
 
-The bundle is self-documenting: it contains the full `agent/` + `ugv_rpi/` trees, the
+The bundle is self-documenting: it contains the full `agent/` + `ugv_rpi/` + `pet/` +
+`wavego_agent/` trees, the
 complete 47-command reference (`.json` + `.xlsx`), `state_table.yaml`, this README, and
 the LICENSE — so after extraction every installer below works from the bundle, offline,
 no `git clone` needed. For the embodied agent: `cd ../agent && ./setup.sh && ./run.sh --simulate`.
