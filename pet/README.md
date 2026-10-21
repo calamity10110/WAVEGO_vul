@@ -317,6 +317,6 @@ pet/
   wavego-pet-vlm.service  llama-server service (systemd template)
   wavego_pet/             persona, vlm_client, validator, vision, display,
                           systemstats, brain, petserve
-  tests/                  79 tests, all mocked, run on any machine
+  tests/                  83 tests, all mocked, run on any machine
 wavego_agent/             the motion foundation it stands on (see its README)
 ```

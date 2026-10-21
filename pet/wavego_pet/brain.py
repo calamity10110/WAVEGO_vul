@@ -66,12 +66,20 @@ class PetBrain:
         self._refresh_display(scene)
         return True
 
-    def warmup(self) -> None:
+    def warmup(self, wait_for_frame_s: float = 5.0, poll_s: float = 0.1) -> None:
         """Precalculate: one throwaway describe at boot so llama-server's
         prompt cache holds our exact system+user prefix (and the model
-        weights/vision encoder are paged in). Failures are fine."""
+        weights/vision encoder are paged in). The camera's first frame
+        lands on its capture thread a moment after start(), so poll
+        briefly for it. Failures are fine."""
         try:
+            deadline = self._clock() + wait_for_frame_s
             jpeg = self.frames.latest_jpeg()
+            for _ in range(200):            # cap: a frozen test clock must not hang us
+                if jpeg is not None or self._clock() >= deadline:
+                    break
+                time.sleep(poll_s)
+                jpeg = self.frames.latest_jpeg()
             if jpeg is not None:
                 self.vlm.describe(jpeg)
                 self._on_event({"event": "warmup_done"})

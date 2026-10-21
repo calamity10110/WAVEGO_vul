@@ -162,7 +162,7 @@ def test_warmup_swallows_failure_and_reports():
     brain = PetBrain(supervisor, Boom(), StaticFrames([]),
                      PetPersona(PersonaConfig(), clock=clock), clock=clock,
                      on_event=events.append)
-    brain.warmup()                      # must not raise
+    brain.warmup(poll_s=0)              # must not raise (clock never advances)
     assert events == []                 # failure: no warmup_done event
 
     from wavego_pet.vision import TINY_JPEG
@@ -170,8 +170,99 @@ def test_warmup_swallows_failure_and_reports():
     brain_ok = PetBrain(supervisor, FakeVLM([]), StaticFrames([TINY_JPEG]),
                         PetPersona(PersonaConfig(), clock=clock), clock=clock,
                         on_event=events.append)
-    brain_ok.warmup()
+    brain_ok.warmup(poll_s=0)
     assert any(e["event"] == "warmup_done" for e in events)
+
+
+def test_warmup_waits_for_first_camera_frame():
+    # regression: warmup used to read latest_jpeg() exactly once, right
+    # after frames.start() — the capture thread had not delivered yet, so
+    # the whole boot warmup was a silent no-op on hardware
+    from wavego_pet.brain import PetBrain
+    from wavego_pet.persona import PersonaConfig, PetPersona
+    from wavego_agent.supervisor import MotionSupervisor
+    from wavego_agent.telemetry import MockTelemetry
+    from wavego_agent.transport import MockTransport
+    from wavego_pet.vision import TINY_JPEG
+    from wavego_pet.vlm_client import FakeVLM
+
+    class LateFrames:
+        def __init__(self, empty_calls):
+            self.remaining = empty_calls
+
+        def latest_jpeg(self):
+            if self.remaining > 0:
+                self.remaining -= 1
+                return None
+            return TINY_JPEG
+
+    class CountingVLM:
+        def __init__(self):
+            self._fake = FakeVLM([])
+            self.calls = 0
+
+        def describe(self, jpeg):
+            self.calls += 1
+            return self._fake.describe(jpeg)
+
+    class StepClock:
+        def __init__(self):
+            self.t = 1000.0
+
+        def __call__(self):
+            self.t += 0.1
+            return self.t
+
+    events = []
+    transport = MockTransport()
+    transport.open()
+    brain = PetBrain(MotionSupervisor(transport, telemetry=MockTelemetry(),
+                                      clock=StepClock()),
+                     CountingVLM(), LateFrames(empty_calls=3),
+                     PetPersona(PersonaConfig(), clock=StepClock()),
+                     clock=StepClock(), on_event=events.append)
+    brain.warmup(poll_s=0)
+    assert brain.vlm.calls == 1
+    assert any(e["event"] == "warmup_done" for e in events)
+
+
+def test_warmup_gives_up_when_no_frame_ever_arrives():
+    from wavego_pet.brain import PetBrain
+    from wavego_pet.persona import PersonaConfig, PetPersona
+    from wavego_agent.supervisor import MotionSupervisor
+    from wavego_agent.telemetry import MockTelemetry
+    from wavego_agent.transport import MockTransport
+
+    class NoFrames:
+        def latest_jpeg(self):
+            return None
+
+    class CountingVLM:
+        def __init__(self):
+            self.calls = 0
+
+        def describe(self, jpeg):
+            self.calls += 1
+
+    class StepClock:
+        def __init__(self):
+            self.t = 1000.0
+
+        def __call__(self):
+            self.t += 0.1
+            return self.t
+
+    events = []
+    transport = MockTransport()
+    transport.open()
+    brain = PetBrain(MotionSupervisor(transport, telemetry=MockTelemetry(),
+                                      clock=StepClock()),
+                     CountingVLM(), NoFrames(),
+                     PetPersona(PersonaConfig(), clock=StepClock()),
+                     clock=StepClock(), on_event=events.append)
+    brain.warmup(wait_for_frame_s=5.0, poll_s=0)
+    assert brain.vlm.calls == 0
+    assert not any(e["event"] == "warmup_done" for e in events)
 
 
 def test_changed_frame_works_without_cv2():
