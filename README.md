@@ -297,6 +297,8 @@ The RPi talks to the ESP32 lower computer over a 3-wire UART link using the main
 | GND | GND (pin 6) |
 | 5V (optional) | 5V — only if powering the RPi from the robot |
 
+![](./README_footage/pin.jpg)
+
 Serial parameters: **115200 baud, 8N1**, one JSON object per line (newline-terminated). The app auto-detects the board: Pi 5 uses `/dev/ttyAMA0`, Pi 4B and earlier use `/dev/serial0` (`app.py` checks `/proc/cpuinfo`).
 
 **Enable the UART on the Raspberry Pi:**
