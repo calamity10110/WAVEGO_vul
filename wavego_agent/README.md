@@ -82,7 +82,7 @@ backward_left backward_right` — the firmware gait table's 8 headings.
 python -m pytest wavego_agent/tests -q
 ```
 
-81 tests: schema rejection cases, every translation mapping, yaw wraparound
+90 tests: schema rejection cases, every translation mapping, yaw wraparound
 across the ±180° seam, preemption, emergency stop latching, queue bounds,
 telemetry-watchdog safety stop, and the closed-loop turn/approach lifecycles
 — all with an injected clock, no threads, no hardware.
