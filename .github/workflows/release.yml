@@ -86,7 +86,7 @@ jobs:
           key: pio-${{ runner.os }}-${{ hashFiles('wavego_pro_platformio/WAVEGO_Pro_PlatformIO/platformio.ini') }}
 
       - name: Install PlatformIO
-        run: pip install platformio esptool
+        run: pip install platformio "esptool~=4.8"
 
       - name: Build (release)
         run: pio run -e esp32dev
