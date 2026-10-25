@@ -93,6 +93,7 @@ jobs:
 
       - name: Merge firmware into one 0x0-flashable image
         run: |
+          mkdir -p ../../dist
           B=.pio/build/esp32dev
           BOOT_APP0="${B}/boot_app0.bin"
           if [ ! -f "${BOOT_APP0}" ]; then
