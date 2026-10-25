@@ -1,0 +1,80 @@
+# wavego_pet configuration. The installer's setup questions write their
+# answers here (camera port, display, models); everything below is the
+# default it starts from. Personality knobs live under persona.
+
+# Camera MIPI connector. The Pi 5 has two (silk-screened CAM/DISP 0 and 1);
+# setup default is DSI1. The display, if used, must take the OTHER one.
+camera:
+  port: dsi1          # dsi0 | dsi1
+  width: 448          # small frames = fewer vision tokens = faster on CPU
+  height: 448
+  jpeg_quality: 80
+
+# Optional DSI LCD status card: pet state, last scene, CPU/RAM/temp —
+# laid out for the configured size. Default none; port must differ from
+# camera.port. enabled: auto turns it on only when a display is attached.
+display:
+  enabled: false      # false | auto | true
+  port: dsi0
+  width: 480
+  height: 480
+
+# ESP32 control board connection. device "auto" prefers the board's USB
+# port (/dev/ttyACM*, /dev/ttyUSB*), then the GPIO UART (/dev/ttyAMA0 on a
+# Pi 5, /dev/serial0 otherwise). Only ONE process may hold the link: stop
+# the ugv_rpi web app before running the pet (or --take-uart at install).
+uart:
+  device: auto        # or an explicit path, e.g. /dev/ttyUSB0
+  baud: 115200
+
+# Scene PROPOSER — the model that looks at frames. host = local
+# llama-server, cloud = any OpenAI-compatible endpoint.
+vlm:
+  provider: host      # host | cloud
+  url: "http://127.0.0.1:8080"
+  model: "qwen3-vl-2b"
+  api_key_env: null   # cloud: env var holding the API key, e.g. OPENAI_API_KEY
+  timeout_s: 120.0
+
+# Scene VALIDATOR — a SECOND opinion on what the VLM claims. It may NEVER
+# be the same model as the VLM (petserve refuses to start); use a different
+# model/endpoint, or the software validator (no second model: a claim must
+# repeat on N consecutive frames before the pet acts on it).
+validator:
+  provider: software    # software | host | cloud
+  url: null
+  model: null
+  api_key_env: null
+  timeout_s: 60.0
+  confirm_threshold: 2  # software: consecutive consistent scenes required
+
+brain:
+  # seconds between VLM scene questions. On a Pi 5 one scene costs ~10-20 s
+  # (image encode + ~30 tokens at 4-5 tok/s); do not go below ~10.
+  scene_every_s: 12.0
+  # scene-change gate: mean pixel diff (0-255) on a 32x32 grayscale thumb
+  # below which the VLM is skipped entirely ("nothing moved"). Raise it to
+  # save more inference, lower it if the pet misses slow changes.
+  change_threshold: 3.0
+
+# Persona tuning — all durations clamped to pet-safe bounds in code
+# (walk <= 2.5 s @ speed <= 0.5, turn <= 1.5 s) no matter what goes here.
+persona:
+  greet_cooldown_s: 60.0    # min seconds between excited greetings
+  trick_cooldown_s: 30.0    # min seconds between jump tricks
+  follow_cooldown_s: 5.0    # min seconds between follow bursts
+  follow_walk_s: 1.2
+  follow_speed: 0.35
+  greet_walk_s: 1.2
+  greet_speed: 0.4
+  greet_trick: true         # jump as part of the greeting
+  fidget_after_s: 45.0      # alone this long -> glance around
+  sleep_after_s: 300.0      # alone this long -> sit and sleep
+  follow_turn_s: 0.6        # blind turn toward an off-center person
+
+motion:
+  rate_hz: 30.0
+
+logging:
+  # JSONL command/event log; null disables file logging
+  jsonl_path: null

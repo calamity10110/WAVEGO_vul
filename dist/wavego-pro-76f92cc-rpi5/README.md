@@ -1,0 +1,473 @@
+![GitHub top language](https://img.shields.io/github/languages/top/calamity10110/WAVEGO_vul) ![GitHub language count](https://img.shields.io/github/languages/count/calamity10110/WAVEGO_vul)
+![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/calamity10110/WAVEGO_vul)
+![GitHub repo size](https://img.shields.io/github/repo-size/calamity10110/WAVEGO_vul) ![GitHub](https://img.shields.io/github/license/calamity10110/WAVEGO_vul) ![GitHub last commit](https://img.shields.io/github/last-commit/calamity10110/WAVEGO_vul)
+
+# Waveshare Bionic Dog-Like Robot
+Open Source for ESP32 And PI5/PI4B.
+
+![](./README_footage/main.jpg)
+
+## Basic Description
+The WAVEGO is a 12-DOF bionic dog-like robot which features 2.3kg.cm large torque bus servos with feedback, reliable structure, and flexible motion, incorporating devices like front camera, 9-axes motion tracker, RGB indicator, etc., together with open source multi-platform Web application. It uses the ESP32 as sub controller for connecting rod inverse solving and gait generation, sharing calculating task for the host controller, an additional Raspberry Pi can be attached as the host controller for high-level decision operating.
+
+The upper computer communicates with the lower computer (the robot's driver based on ESP32) by sending JSON commands via GPIO UART. The host controller, which employs a Raspberry Pi, handles AI vision and strategy planning, while the sub-controller, utilizing an ESP32, manages motion control and sensor data processing. This setup ensures efficient collaboration and enhanced performance.
+
+## Features
+- Live video stream (MJPEG `/video_feed`; WebRTC signaling endpoint present but not wired to a video element)
+- Cross-platform web application base on Flask
+- Auto targeting (OpenCV)
+- Object Recognition (OpenCV)
+- Gesture Recognition (MediaPipe)
+- Face detection (OpenCV & MediaPipe)
+- Motion detection (OpenCV)
+- Color Recognition (OpenCV)
+- Multi-threaded CV processing
+- Shortcut key control
+- Photo taking
+- Video Recording
+- Person following (onboard MobileNet-SSD detector → discrete gait control with watchdog)
+- Line following (gait-based, LINE tab — the wheeled-robot T:13 pipeline is disabled)
+- Voice assistant (persistent Moonshine ONNX ASR + phrase grammar → robot commands)
+- VLM goal control (onboard Intern-Decision decision engine, software-verified goal sessions)
+- Telemetry tab (realtime joint positions, battery, host sensors, host/client error rings)
+- Control bypass API (`/api/cmd`, `/api/status`, `/api/cv`, `/api/config`, `/api/telemetry`, `/api/vlm`)
+- Unified tabbed web UI with runtime Settings page
+- Embodied agent (`agent/`): VLM proposes hex states, deterministic validator is the sole motion authority, token-auth dashboard with estop-only write — see [Embodied agent](#embodied-agent)
+
+## Contents
+- [Robot Schematic](#robot-schematic)
+- [Command Reference](#command-reference)
+- [Install from the release](#install-from-the-release-recommended)
+- [Install from source](#install-from-source-alternative)
+- [What differs from the stock Waveshare build](#what-differs-from-the-stock-waveshare-build)
+- [Usage](#usage)
+- [Connect the Raspberry Pi to the ESP32 Mainboard](#connect-the-raspberry-pi-to-the-esp32-mainboard)
+- [Sending Commands](#sending-commands)
+- [Creating Custom Actions](#creating-custom-actions)
+- [Camera Installation and Usage](#camera-installation-and-usage)
+- [Embodied agent](#embodied-agent)
+
+## Repository Layout
+| Path | Content |
+|---|---|
+| `wavego_pro_platformio/` | ESP32 lower-computer firmware (PlatformIO, Arduino framework). Gait engine, IK, servo bus, OLED, RGB, missions, web UI — see [`wavego_pro_platformio/README.md`](./wavego_pro_platformio/README.md) |
+| `ugv_rpi/` | Raspberry Pi upper-computer app (Flask + WebRTC + OpenCV/MediaPipe) — see [`ugv_rpi/README.md`](./ugv_rpi/README.md) |
+| `ugv_rpi/voice/` | Persistent voice assistant (Moonshine ONNX ASR + phrase grammar) — installer: `ugv_rpi/install_voice.sh` |
+| `ugv_rpi/vlm_ctrl/` | VLM goal control: onboard Intern-Decision engine, verification stack, latency benchmark — installer: `ugv_rpi/install_vlm.sh` |
+| `agent/` | Embodied agent stack: hex validator, safety gates, VLM client, dashboard, learner — installer: `agent/install_agent.sh` |
+| `wavego_agent/` | Motion supervisor library: semantic-command validation, behavior layer, ESP32 translation, single UART owner — consumed by `pet/` |
+| `pet/` | WAVEGO Pet app: Qwen3-VL vision, brain/persona, display — drives the robot through `wavego_agent` — installer: `pet/install_pet.sh` |
+| `state_table.yaml` | Agent single source of truth: hex codebook (cross-checked against the instruction table), safety thresholds, tunables |
+| `wavego_pro_instruction_table.xlsx` / `.json` | Complete JSON command reference: 47 commands, feedback formats, unused/dead code audit |
+
+## Robot Schematic
+The system is a two-tier controller split by a JSON-over-UART contract:
+
+```
+                 Browser (phone / PC)
+                   │ WebRTC video + websocket ctrl
+                   ▼
+    ┌──────────────────────────────┐
+    │ Raspberry Pi (upper computer)│  Flask :5000, CV, strategy
+    │  ugv_rpi app.py              │
+    └──────────────┬───────────────┘
+                   │ UART JSON @115200 (newline-terminated)
+                   │ RPi GPIO14/TXD → mainboard RX0
+                   │ RPi GPIO15/RXD ← mainboard TX0
+                   ▼
+    ┌──────────────────────────────┐
+    │ ESP32 mainboard (lower)      │  gait IK, servo bus, sensors
+    │  wavego_pro_platformio       │
+    └──┬────────┬────────┬─────────┘
+       │ UART1  │ I2C    │ GPIO
+       ▼        ▼        ▼
+  12x SCS    SSD1306  2x WS2812 RGB (GPIO26)
+  bus servos OLED     buzzer (GPIO21)
+  (RX18/TX19) ICM20948 IMU @0x68
+              INA219 power @0x42
+```
+
+**ESP32 mainboard I/O map** (from firmware `Config.h` / `devs.h`):
+
+| Function | Pin / Bus | Device |
+|---|---|---|
+| Bus servo UART | RX=18, TX=19 | 12× 2.3 kg·cm bus servos (SCServo/SCSCL protocol) |
+| I2C | SDA=32, SCL=33 (400 kHz) | SSD1306 OLED 128×32 @0x3C, ICM20948 9-axis IMU @0x68, INA219 battery monitor @0x42 |
+| RGB LEDs | GPIO26 | 2× WS2812 NeoPixel (id 0=left, 1=right) |
+| Buzzer | GPIO21 | active buzzer |
+| Assembly/debug mode | GPIO12 | jumper to 3V3 enables servo-level commands (T:102/103) |
+| Host link | 2×5P expansion: RX0, TX0, G21, G15, G12, 3V3, 5V, GND | Raspberry Pi UART / USB Type-C |
+| WiFi | built-in | AP `WAVEGO` / `12345678` @ `192.168.4.1`, web UI on :80 |
+
+**Leg / joint layout** (joint index → servo ID, from `BodyCtrl.cpp`):
+
+```
+        LF_B[1]/52    forward    RF_B[7]/22
+        LF_A[0]/53               RF_A[6]/23
+          |                          |
+        LF_H[2]/51                RF_H[8]/21
+
+        LH_H[5]/43                RH_H[11]/33
+          |                          |
+        LH_A[3]/41                RH_A[9]/31
+        LH_B[4]/42                RH_B[10]/32
+```
+jointID array (index 0..11): `{53, 52, 51, 41, 42, 43, 23, 22, 21, 31, 32, 33}` — servo positions 0..1023, zero/mid = 511. For `singleLegCtrl` commands legs are numbered 1=front-left, 2=hind-left, 3=front-right, 4=hind-right, with foot targets in mm (x=forward, y=height, z=lateral).
+
+**Power**: 2× 18650 (2S, ~6.0–8.4 V) with protection circuit; INA219 monitors pack voltage (query with `{"T":207}`, telemetry `v` field of `T:1001`). Charging is possible while powered.
+
+## Command Reference
+Every command is one JSON object with a `"T"` type field. Full reference with parameters, handlers, examples, and feedback formats:
+
+- **`wavego_pro_instruction_table.xlsx`** — 3 sheets: Instruction Table (47 commands), Feedback (telemetry), Unused Code audit
+- **`wavego_pro_instruction_table.json`** — same data, machine-readable
+- Waveshare wiki: [JSON Command Set](https://www.waveshare.com/wiki/WAVEGO_Pro#JSON_Command_Set) (documents the T:101–107 basics)
+
+## Install from the release (recommended)
+
+Prebuilt, CI-tested artifacts — no compilation, no dependency hunting. Download them from the
+[latest release page](https://github.com/calamity10110/WAVEGO_vul/releases/latest) and set the
+tag once (the examples below use it everywhere):
+
+    V=v0.1.1        # check the latest tag on the releases page
+
+### 1. Flash the ESP32 mainboard (from a PC)
+
+Disconnect the Raspberry Pi UART from the mainboard first (the upload fails with
+"Failed to connect to ESP32" otherwise), connect the mainboard to the PC via USB Type-C,
+then flash the four release binaries with the offsets from
+`wavego-esp32-${V}-flash-manifest.txt` (shipped in every release):
+
+    pip install esptool
+    esptool.py --chip esp32 --port /dev/ttyUSB0 write_flash \
+      0x1000  wavego-esp32-${V}-bootloader.bin \
+      0x8000  wavego-esp32-${V}-partitions.bin \
+      0xe000  wavego-esp32-${V}-boot_app0.bin \
+      0x10000 wavego-esp32-${V}-firmware.bin
+
+(Use `COM3` etc. on Windows instead of `/dev/ttyUSB0`.) Reconnect the Pi UART afterwards.
+This firmware is built on Arduino core 3.x — the stock Waveshare firmware is 2.x-era, so
+flashing back to stock later requires a full reflash, not an incremental update.
+
+### 2. Set up the Raspberry Pi
+
+On a clean Raspberry Pi OS (Bookworm), with the camera ribbon connected, download
+`wavego-pro-${V}-rpi5.tar.gz` and its `.sha256` from the release page to the Pi, then:
+
+    # on the Pi
+    sha256sum -c wavego-pro-${V}-rpi5.tar.gz.sha256   # verify the download
+    tar -xzf wavego-pro-${V}-rpi5.tar.gz              # -> wavego-pro-${V}-rpi5/
+    cd wavego-pro-${V}-rpi5/ugv_rpi/
+    sudo chmod +x setup.sh autorun.sh
+    sudo ./setup.sh        # venv + requirements + services (takes a while)
+    ./autorun.sh           # enable boot autorun
+    cd AccessPopup && sudo chmod +x installconfig.sh && sudo ./installconfig.sh
+    #   -> 1 (install), any key, 9 (exit)
+    sudo reboot
+
+The bundle is self-documenting: it contains the full `agent/` + `ugv_rpi/` + `pet/` +
+`wavego_agent/` trees, the
+complete 47-command reference (`.json` + `.xlsx`), `state_table.yaml`, this README, and
+the LICENSE — so after extraction every installer below works from the bundle, offline,
+no `git clone` needed. For the embodied agent: `cd ../agent && ./setup.sh && ./run.sh --simulate`.
+Continue at [Usage](#usage).
+
+## Install from source (alternative)
+
+**Option A — stock Waveshare image:** flash the official WAVEGO image with Raspberry Pi Imager ([download](https://drive.google.com/file/d/1fQcucuv19uY6qhOVKPc3t1JqV-zLIHE-/view), tutorial: [Product Assembly and RPi Environment Configuration](https://www.waveshare.com/wiki/WAVEGO_Pro-Product_Assembly_and_Raspberry_Pi_Environment_Configuration)). Everything below is already installed and configured — but it ships the stock firmware and none of this fork's additions.
+
+**Option B — from source on a clean Raspberry Pi OS (Bookworm):**
+
+### Download the repo from github
+
+You can clone this repository from Waveshare's GitHub to your local machine.
+
+    git clone https://github.com/waveshareteam/WAVEGO_Pro.git
+    
+### Grant execution permission to the installation script
+    cd WAVEGO_Pro/ugv_rpi/
+    sudo chmod +x setup.sh
+    sudo chmod +x autorun.sh
+### Install app (it'll take a while before finish)
+    sudo ./setup.sh
+### Autorun setup
+    ./autorun.sh
+### AccessPopup installation
+    cd AccessPopup
+    sudo chmod +x installconfig.sh
+    sudo ./installconfig.sh
+    *Input 1: Install AccessPopup
+    *Press any key to exit
+    *Input 9: Exit installconfig.sh
+### Reboot Device
+    sudo reboot
+
+After powering on the robot, the Raspberry Pi will automatically establish a hotspot, and the LED screen will display a series of system initialization messages:  
+
+![](./ugv_rpi/media/RaspRover-LED-screen.png)
+- The first line `E` displays the IP address of the Ethernet port, which allows remote access to the Raspberry Pi. If it shows No Ethernet, it indicates that the Raspberry Pi is not connected to an Ethernet cable.
+- The second line `W` indicates the robot's wireless mode. In Access Point (AP) mode, the robot automatically sets up a hotspot with the default IP address `192.168.50.5`. In Station (STA) mode, the Raspberry Pi connects to a known WiFi network and displays the IP address for remote access.
+- The third line `F/J` specifies the Ethernet port numbers. Port `5000` provides access to the robot control Web UI, while port `8888` grants access to the JupyterLab interface.
+- The fourth line `STA` indicates that the WiFi is in Station (STA) mode. The time value represents the duration of robot usage. The dBm value indicates the signal strength RSSI in STA mode.  
+
+
+You can access the robot web app using a mobile phone or PC. Simply open your browser and enter `[IP]:5000` (for example, `192.168.10.50:5000`) in the URL bar to control the robot.  
+
+If the robot is not connected to a known WiFi network, it will automatically set up a hotspot named "`AccessPopup`" with the password `1234567890`. You can then use a mobile phone or PC to connect to this hotspot. Once connected, open your browser and enter `192.168.50.5:5000` in the URL bar to control the robot.  
+
+
+### Troubleshooting: v4l2 errors
+If the program fails to run and encounters errors related to v4l2.py during runtime, you need to delete v4l2.py from both the Python virtual environment and the user environment. This will allow the program to automatically use the system-wide v4l2.py.  
+
+    cd WAVEGO_Pro/ugv_rpi/  
+    sudo rm ugv-env/lib/python3.11/site-packages/v4l2.py  
+    sudo rm /home/[your_user_name]/.local/lib/python3.11/site-packages/v4l2.py  
+
+Now you can restart the main program app.py.
+
+## What differs from the stock Waveshare build
+
+This repo is a fork of Waveshare's `WAVEGO_Pro`, rebuilt around a release pipeline and an
+embodied-agent upper stack. If you know the stock build, these are the deltas:
+
+**ESP32 firmware** (`wavego_pro_platformio/`)
+- Built with PlatformIO on Arduino core 3.x (pinned pioarduino `53.03.13`) instead of the
+  stock Arduino-IDE 2.x-era firmware. The prebuilt `.bin` files in the release are built
+  with this core — same one, no surprises.
+- ESP-NOW receive path hardened: zero-fill + bounded `memcpy` (`ESPNOW_HARDENING`, default
+  on) and an optional sender-MAC allowlist (`receivedFromKnownMac`).
+- `getMac()` reads the WiFi interface MAC; INA219 power-monitor calls use the current
+  `INA219_WE` API.
+
+**Raspberry Pi app** (`ugv_rpi/`) — an extended fork of the stock web app:
+- Telemetry tab: realtime joint positions (T:106 @ 1 Hz), battery, host sensors, host/client
+  error rings, VLM session log.
+- Optional systemd services: voice assistant (Moonshine ONNX + phrase grammar,
+  `install_voice.sh`), VLM goal control (Intern-Decision engine, `install_vlm.sh`),
+  failsafe watchdog daemon (`install_failsafe.sh`).
+- Gait-based line following (the stock wheeled-robot `T:13` pipeline stays disabled) and
+  person following with a video-stall watchdog.
+- Wheel-vehicle / RaspRover / arm code paths are commented out with `[WAVEGO Pro]` markers
+  (search the string to restore them).
+
+**Embodied agent** (`agent/`) — entirely new, not in the stock repo: a VLM proposes 6-char
+hex state codes and a deterministic validator is the sole motion authority (SQLite audit
+trail, token-auth dashboard on `:8000` with an ESTOP-only write endpoint).
+
+**Release engineering** — the stock repo ships no prebuilt artifacts. Here, every `v*`
+tag builds the ESP32 firmware and the Pi bundle in CI and publishes them as a GitHub
+Release with SHA-256 checksums, so the robot can be flashed and set up without compiling
+anything.
+
+## Usage
+
+### First boot
+1. Power the robot with the ESP32 flashed and the Pi set up. The OLED shows boot lines:
+   `E` = Ethernet IP (or No Ethernet), `W` = wireless mode, `F/J` = ports
+   (`5000` web UI, `8888` JupyterLab), `STA` = WiFi station info.
+2. If the Pi finds no known WiFi, it opens the `AccessPopup` hotspot (`1234567890`) —
+   join it from a phone/PC and open `192.168.50.5:5000`. Otherwise open
+   `http://<robot-ip>:5000`.
+
+### Everyday control
+- **Web UI** (`:5000`) — Control pad, Dashboard, Telemetry, Joystick, Gait tuning,
+  Settings, Photos/Videos; the JSON console sends raw commands to the ESP32.
+- **Agent dashboard** (`:8000`, token printed on first `agent/run.sh`) — start/stop the
+  embodied agent, watch the audit tail, ESTOP.
+- **Voice** (after `install_voice.sh`) — *forward / back / turn left / turn right /
+  stop*, *follow me*, *find the ball*.
+- **JupyterLab** (`:8888`) — notebooks 30–31 walk through the HTTP bypass API and
+  realtime telemetry.
+
+### Safety before the first walk
+- `T:111` gait commands are level-based: the ESP32 keeps executing the last one until a
+  new command arrives. If the controlling process dies mid-walk, the robot keeps walking —
+  the only stop is the power switch. Read the failsafe section in
+  [`ugv_rpi/README.md`](ugv_rpi/README.md#known-limitation-motion-commands-outlive-the-controlling-process)
+  and install the failsafe daemon (`ugv_rpi/install_failsafe.sh`).
+- First tests on a stand (belly supported, feet off the ground), then on a leash.
+
+## Connect the Raspberry Pi to the ESP32 Mainboard
+The RPi talks to the ESP32 lower computer over a 3-wire UART link using the mainboard's 2×5P expansion port:
+
+| Mainboard expansion pin | Raspberry Pi GPIO |
+|---|---|
+| RX0 | GPIO14 / TXD (pin 8) |
+| TX0 | GPIO15 / RXD (pin 10) |
+| GND | GND (pin 6) |
+| 5V (optional) | 5V — only if powering the RPi from the robot |
+
+![](./README_footage/pin.jpg)
+
+Serial parameters: **115200 baud, 8N1**, one JSON object per line (newline-terminated). The app auto-detects the board: Pi 5 uses `/dev/ttyAMA0`, Pi 4B and earlier use `/dev/serial0` (`app.py` checks `/proc/cpuinfo`).
+
+**Enable the UART on the Raspberry Pi:**
+
+    sudo raspi-config
+    # Interface Options -> Serial Port
+    #   "Would you like a login shell over serial?" -> No
+    #   "Would you like the serial port hardware enabled?" -> Yes
+    sudo reboot
+
+Verify after reboot: `ls -l /dev/serial0` should point to `ttyS0` (Pi 4) or `ttyAMA0` (Pi 5), and `dmesg | grep tty` should show the UART. With the mainboard connected and powered, a quick end-to-end test is opening the port and typing `{"T":207}` — the board should answer `{"T":-207,"voltage":7.xx}`:
+
+    sudo apt install picocom
+    picocom -b 115200 /dev/serial0     # /dev/ttyAMA0 on Pi 5
+    # type: {"T":207}  then Enter; exit with Ctrl+A, Ctrl+X
+
+Notes:
+- **Flashing the ESP32**: disconnect the RPi UART first (or the upload fails with "Failed to connect to ESP32"). Alternatively use the Type-C port from a PC.
+- The ESP32 firmware also accepts commands over USB Type-C (same 115200 JSON protocol) and over its own WiFi AP (`WAVEGO` / `12345678`, web UI at `192.168.4.1`).
+- The expansion port also exposes G21, G15, G12, 3V3 for assembly-mode control and extensions.
+
+## Sending Commands
+All 47 commands are listed in [wavego_pro_instruction_table.xlsx](./wavego_pro_instruction_table.xlsx) with parameters and examples. Quick recipes:
+
+**1. Web UI console (no code):** open the robot's web app (`[IP]:5000`), use the JSON command input box, e.g. `base -c {"T":111,"FB":1,"LR":0}` to walk forward. The ESP32's own web UI (`192.168.4.1`) has the same console.
+
+**2. Serial from a PC (Python):**
+
+    import serial, threading
+    ser = serial.Serial('COM20', 115200)   # or /dev/ttyUSB0
+    ser.write(b'{"T":111,"FB":1,"LR":0}\n')
+    print(ser.readline())                   # telemetry / feedback
+
+**3. HTTP over the ESP32 WiFi:**
+
+    http://192.168.4.1/js?json={"T":106}   # returns {"T":-106,"fb":[...]}
+
+**4. From Raspberry Pi code** (the app exposes the BaseController):
+
+    from base_ctrl import BaseController
+    base = BaseController('/dev/serial0', 115200)   # '/dev/ttyAMA0' on Pi 5
+    base.base_speed_ctrl(0.5, 0.5)   # {"T":1,...} drive
+    base.gimbal_ctrl(0, 0, 200, 10)  # {"T":133,...} body pose
+    base.rgb_light(0, 255, 0, 64)    # {"T":201,...} RGB LED
+    base.base_oled(0, "hello")       # {"T":202,...} OLED line
+
+Core motion commands: `{"T":111,"FB":-1..1,"LR":-1..1}` vector gait, `{"T":112,"func":1..5}` StayLow/HandShake/Jump/steady on/off, `{"T":110}` stand, `{"T":114,"h":95}` height, `{"T":133,"X":..,"Y":..}` body pose (yaw/pitch).
+
+## Creating Custom Actions
+Two ways, no recompile vs full control:
+
+**A. Mission scripts (JSON only, stored in ESP32 LittleFS):** a mission is a named sequence of command lines executed step by step.
+
+    {"T":301,"name":"mydance","intro":"custom action demo"}        # create
+    {"T":303,"name":"mydance","json":"{\"T\":114,\"h\":80}"}       # append step
+    {"T":303,"name":"mydance","json":"{\"T\":112,\"func\":3}"}     # append step
+    {"T":308,"name":"mydance","interval":1000,"loop":1}            # run
+
+Edit steps with T:304/T:305/T:306, list with T:302, delete with T:309. The `boot` mission is executed at every power-on (holds WiFi config and zero calibration — edit with care).
+
+**B. Firmware action (C++, full IK control):** add a method to `BodyCtrl` in `wavego_pro_platformio/WAVEGO_Pro_PlatformIO/src/BodyCtrl.cpp/.h` and call it from the `T:112` dispatcher in `main.cpp`. The existing actions are the reference pattern — a body-height sweep with smooth interpolation:
+
+    void BodyCtrl::functionActionA(){
+      for(float i = 0; i <= 1; i += 0.02){
+        standUp(besselCtrl(WALK_HEIGHT, WALK_HEIGHT_MIN, i)); // easing curve 95 -> 75 mm
+        allJointAngle(GoalAngle);      // solve all legs from the buffer, then move together
+        delay(6);
+      }
+    }
+
+Building blocks (all in `BodyCtrl`):
+- `standUp(height_mm)` — set target body height (75..110); IK is written to `GoalAngle[]`, servos do not move yet
+- `singleLegCtrl(leg1to4, x, y, z)` — foot target in mm per leg (x forward, y height, z lateral)
+- `pitchYawRoll(pitch, yaw, roll)` — body posture
+- `besselCtrl(start, end, i)` — cosine easing between two values as `i` goes 0→1 for natural motion (use `linearCtrl` for constant speed)
+- `allJointAngle(GoalAngle)` — apply all computed targets so every servo starts moving at the same instant
+
+Wire it into `main.cpp`:
+
+    case CMD_BASIC_FUNC:
+        if (jsonCmdInput["func"] == 1) { ... }
+        else if (jsonCmdInput["func"] == 6) { bodyCtrl.functionActionA(); }  // new slot
+
+Then trigger it with `{"T":112,"func":6}`. Build and flash with PlatformIO (`pio run -t upload` from `wavego_pro_platformio/WAVEGO_Pro_PlatformIO/`, mainboard connected via Type-C, RPi UART disconnected). Background reading: [WAVEGO Custom Action Development Tutorial](https://www.waveshare.com/wiki/WAVEGO_Custom_Action_Development_Tutorial) (uses the older WAVEGO naming `GoalPosAll()`/`GoalPWM[]`; in this Pro firmware the equivalents are `allJointAngle(GoalAngle)`/`GoalAngle[]`).
+
+## Onboard Services & API
+
+| Service | Start | Surface |
+|---|---|---|
+| Main app (`app.py`) | cron `@reboot`, port 5000 | tabbed Web UI (Control / Dashboard / Telemetry / Joystick / Gait / Settings / Photos / Videos), HTTP API, sole UART owner |
+| Voice assistant | `ugv_rpi/install_voice.sh` → `wavego-voice.service` | phrase grammar → `/api/cmd`, `/api/cv`, `/api/vlm` |
+| VLM goal control | `ugv_rpi/install_vlm.sh` → `wavego-vlm.service` | goal sessions → software-verified gait commands |
+| Failsafe watchdog | `ugv_rpi/install_failsafe.sh` → `wavego-failsafe.service` | post-mortem UART stop if the main app dies within the motion grace window (no reflash needed) |
+| Embodied agent | `agent/setup.sh` then `agent/run.sh` (or `agent/install_agent.sh` → `wavego-agent.service`), port 8000 | token-auth agent dashboard; loop + dashboard share one validator (single UART owner alongside `app.py` — run the agent **instead of**, not next to, direct-control sessions) |
+
+Full HTTP API reference (bypass API table): [`ugv_rpi/README.md`](ugv_rpi/README.md).
+Jupyter tutorials run at `:8888` (`tutorial_en/`, `tutorial_cn/`) — notebooks **30–31** cover the WAVEGO Pro HTTP API and realtime telemetry; notebooks **10, 11, 21** carry WAVEGO Pro notices (removed audio stack / unsupported line-following).
+
+## Embodied agent (`agent/`)
+
+A local autonomy stack built on one rule: **the model proposes, the validator disposes**. The VLM never emits robot commands — it selects 6-char hex state codes (`set_state` tool call), and the deterministic validator is the only component allowed to translate a code into ESP32 JSON and write it to the UART. Every decision is audit-logged.
+
+**Pipeline** (`agent/loop.py`, L0→L4 heartbeat): ingest (user text, missions, camera) → perceive (VLM frame describe) → deliberate (one tool call per cycle; arbitration Safety > user > mission > idle) → execute (tool dispatch) → outputs (JSONL cycle log). Failure ladder: retry with feedback, halt after repeated failures, halt on shutdown. `T:111` is level-based, so every motion path ends in `finally: halt`. Full input→process→output decision tree with per-node dependencies and functions: [`agent/DATAFLOW.md`](agent/DATAFLOW.md).
+
+**Safety layers** (each unit-tested, stdlib-only suites):
+- `validator.py` — hex→JSON translation, codebook/format/speed/transition gates, bad-code streak → forced halt, sqlite audit trail, thread-safe
+- `safety.py` — frozen-camera detection (dominant-hash + A,B,A loop), prompt-injection scan, verdict vocabulary, pre-motion checklist
+- `redteam_verdict.py` — 23 adversarial attacks (injection, verdict spoofing, frame loops) — 23/23 withstood
+- `test_fuzz.py` — seeded validator fuzzing (`python agent/test_fuzz.py 1337 10000`) — 0 violations
+
+**Codebook** (`state_table.yaml`): cross-checked against `wavego_pro_instruction_table.json` (firmware `Config.h` + `main.cpp`). Unverified codes (SIT, JUMP, …) are quarantined until you flip `verified: true` after physical testing. Note: `T:111` has no speed parameter, so WALK_SLOW emits the same JSON as WALK; there is no firmware wave function (the old `func:99` mapping was removed).
+
+**Learner** (`learner.py`): quarantine-first knowledge store on the same `state.db`. Observations land in the `learned` tier; promotion to the trusted `core` tier requires minimum trials, failure tilt below threshold, and value consistency. Hex-looking keys are refused promotion — learning can never grow the motion authority. Idle-time promotion runs inside the agent loop under a time budget + minimum interval (`learner:` section of `state_table.yaml`).
+
+**Dashboard** (port 8000): a window, not a door. Token auth (constant-time compare), live state + audit tail, WebSocket push — and exactly one write endpoint: **ESTOP**, which halts through the same validator instance and is deliberately exempt from rate limiting. Token is stored root-only in `/etc/wavego/agent.env` by the installer.
+
+**Install on the robot** (from `agent/`):
+
+    ./setup.sh                        # venv + deps + config sanity + self-test
+    ./run.sh --simulate               # dry run: full agent + dashboard, no hardware
+    ./run.sh                          # hardware mode (token auto-generated, printed once)
+    ./install_agent.sh                # optional: systemd autostart (wavego-agent.service)
+    ./install_agent.sh --check
+    ./install_agent.sh --uninstall
+    journalctl -u wavego-agent -f     # live logs
+
+`run.sh` flags: `--token X` (or `AGENT_TOKEN` env), `--port N`, `--host H`, `--once` (single cycle, no dashboard), `--no-loop` (dashboard only, simulate — the main app keeps the UART). Ctrl-C always halts the robot and releases the port.
+
+**Run without installing** (dev): `python -m agent.serve --token dev --simulate` (no hardware), or `python -m agent.loop --simulate --once` for a single cycle. Tests: `python agent/test_validator.py && python agent/test_safety.py && python agent/test_learner.py && python agent/test_dashboard.py`.
+
+## Camera Installation and Usage
+The RPi app auto-detects cameras at startup in this order: **USB → CSI → OAK (depthai)**.
+
+**CSI camera (recommended, kit includes ultra-wide lens):**
+1. Power off. Connect the camera to the Pi's CAM/DISP CSI port with the ribbon cable — Pi 5 uses the 22-pin mini FPC (smaller cable, metal contacts toward the board); Pi 4B uses the 15-pin ribbon (contacts toward the Ethernet side on the official cable orientation).
+2. Boot and verify the module is detected:
+
+       cat /proc/device-tree/model        # confirm board
+       rpicam-hello -t 5000               # Pi 5 / Bookworm (or: libcamera-hello -t 5000)
+
+   If the preview shows, the camera works. On older OS ensure `camera_auto_detect=1` in `/boot/firmware/config.txt` (default on current images).
+
+   **OV5647 camera module** (Camera v1 family) is often not auto-detected, especially on the DSI-side/CAM0 connector. If `rpicam-hello` reports no camera, add the explicit overlay to `/boot/firmware/config.txt` and reboot:
+
+       #DSI/cam 0 Use for ov5647 cam
+       dtoverlay=ov5647,cam0
+
+   Verify with `rpicam-hello --camera 0 -t 5000` after reboot, and check `dmesg | grep -i ov5647` shows the sensor registering on the `csi0`/`cam0` pipeline.
+3. The app uses `picamera2` (already in `requirements.txt`); no extra driver install is needed.
+
+**USB camera:** plug in and boot — the app opens it with OpenCV (`/dev/video0`, 640×480 default). Nothing to configure.
+
+**Resolution/quality tuning:** `ugv_rpi/config.yaml` → `video: default_res_w / default_res_h / default_quality`.
+
+**Usage:** open the web app → live WebRTC video (fallback MJPEG `/video_feed`). CV functions run on the stream: face/object/gesture/motion detection and color tracking (buttons in the web UI) — when tracking drives the robot, pose output goes through T:133. Photos and videos are captured to the Pi and browsable in the gallery pages. If video fails with v4l2 errors, see the troubleshooting note above.
+
+# License
+WAVEGO_Pro for the Raspberry Pi: an open source robotics platform for the Raspberry Pi.
+Copyright (C) 2024 [Waveshare](https://www.waveshare.com/)
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/gpl-3.0.txt>.

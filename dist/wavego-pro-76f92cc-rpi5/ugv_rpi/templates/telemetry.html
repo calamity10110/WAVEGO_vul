@@ -1,0 +1,212 @@
+<html lang="en-US">
+<head>
+    <title>WAVEGO Pro — Telemetry</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <meta name="theme-color" content="#101418">
+    <script src="./nav.js"></script>
+    <style>
+        :root {
+            color-scheme: dark;
+            --bg: #101418; --panel: #1a2129; --panel2: #212b36; --line: #2d3a47;
+            --txt: #d8e1ea; --dim: #8fa1b3; --acc: #4fc3f7; --ok: #66bb6a; --warn: #ffa726; --bad: #ef5350;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: var(--bg); color: var(--txt); font-family: "Segoe UI", Roboto, Arial, sans-serif; }
+        main { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; padding: 14px; }
+        section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+        section h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--dim); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+        .badge { font-size: 10px; padding: 2px 8px; border-radius: 4px; background: var(--panel2); color: var(--dim); }
+        .badge.ok { color: var(--ok); } .badge.stale { color: var(--warn); } .badge.err { color: var(--bad); }
+        .tele-row { display: flex; justify-content: space-between; align-items: baseline; background: var(--panel2); border-radius: 7px; padding: 8px 12px; margin-bottom: 6px; }
+        .tele-row .k { color: var(--dim); font-size: 12px; }
+        .tele-row .v { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+        .joint { margin-bottom: 8px; }
+        .joint .jl { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 2px; }
+        .joint .jl .name { color: var(--txt); }
+        .joint .jl .sid { color: var(--dim); }
+        .joint .jl .val { color: var(--acc); font-family: Consolas, monospace; }
+        .jbar { position: relative; height: 10px; background: #0b0f13; border-radius: 4px; overflow: hidden; }
+        .jbar .fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0%; background: var(--acc); transition: width 0.4s ease-out; }
+        .jbar .mid { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--dim); opacity: 0.6; }
+        .err-box {
+            height: 260px; overflow-y: auto; font-family: Consolas, monospace; font-size: 11px;
+            background: #0b0f13; border: 1px solid var(--line); border-radius: 7px; padding: 8px;
+        }
+        .err-line { margin-bottom: 4px; line-height: 1.45; }
+        .err-line .et { color: var(--dim); } .err-line .es { color: var(--acc); }
+        .err-line.ERROR .em { color: #ffb4ae; } .err-line.WARNING .em { color: var(--warn); }
+        .empty { color: var(--dim); font-size: 12px; padding: 10px; text-align: center; }
+        .bat-bar { height: 8px; border-radius: 4px; background: #3a2b2b; overflow: hidden; margin-top: 6px; }
+        .bat-fill { height: 100%; width: 0%; background: var(--ok); transition: width .5s, background .5s; }
+    </style>
+</head>
+<body>
+<main>
+    <section>
+        <h2>Host — Raspberry Pi <span class="badge" id="rpiAge">--</span></h2>
+        <div class="tele-row"><span class="k">CPU LOAD</span><span class="v"><span id="cpu">--</span> %</span></div>
+        <div class="tele-row"><span class="k">CPU TEMP</span><span class="v"><span id="temp">--</span> &deg;C</span></div>
+        <div class="tele-row"><span class="k">RAM USAGE</span><span class="v"><span id="ram">--</span> %</span></div>
+        <div class="tele-row"><span class="k">WIFI RSSI</span><span class="v"><span id="rssi">--</span> dBm</span></div>
+        <div class="tele-row"><span class="k">VIDEO FPS</span><span class="v" id="fps">--</span></div>
+        <div class="tele-row"><span class="k">CV MODE</span><span class="v" id="cvMode">--</span></div>
+    </section>
+
+    <section>
+        <h2>ESP32 Mainboard <span class="badge" id="espAge">--</span></h2>
+        <div class="tele-row"><span class="k">BATTERY (2S INA219)</span><span class="v"><span id="bat">--</span> V</span></div>
+        <div class="bat-bar"><div class="bat-fill" id="batFill"></div></div>
+        <h2 style="margin-top:14px">Last serial feedback</h2>
+        <div class="err-box" id="espRaw"><div class="empty">waiting for serial data...</div></div>
+    </section>
+
+    <section>
+        <h2>Joints (T:106 query @1 Hz) <span class="badge" id="jAge">--</span></h2>
+        <div id="joints"><div class="empty">waiting for first joint frame...</div></div>
+        <p class="note" style="font-size:11px;color:var(--dim);margin-top:6px">bar = servo position 0..1023, tick = center 511</p>
+    </section>
+
+    <section>
+        <h2>VLM Session <span class="badge" id="vlmBadge">--</span></h2>
+        <div class="err-box" id="vlmLog"><div class="empty">vlm service idle or down</div></div>
+    </section>
+
+    <section>
+        <h2>Host Errors <span class="badge" id="hostErrBadge">0</span></h2>
+        <div class="err-box" id="hostErr" aria-live="polite"><div class="empty">no host errors captured</div></div>
+    </section>
+
+    <section>
+        <h2>Client Errors (this browser) <span class="badge" id="clientErrBadge">0</span></h2>
+        <div class="err-box" id="clientErr" aria-live="polite"><div class="empty">no client errors</div></div>
+    </section>
+</main>
+
+<script>
+(function () {
+    var JOINT_LABELS = [
+        ['LF_A', 53], ['LF_B', 52], ['LF_H', 51],
+        ['LH_A', 41], ['LH_B', 42], ['LH_H', 43],
+        ['RF_A', 23], ['RF_B', 22], ['RF_H', 21],
+        ['RH_A', 31], ['RH_B', 32], ['RH_H', 33]
+    ];
+    var CV_NAMES = { 10301: 'none', 10302: 'motion', 10303: 'face', 10304: 'objects', 10305: 'color',
+                     10306: 'hand', 10307: 'auto', 10308: 'mp_face', 10309: 'mp_pose', 10310: 'person' };
+    var clientErrs = [];
+    var jointsBuilt = false;
+
+    function $(id) { return document.getElementById(id); }
+
+    function ageBadge(id, t, staleS) {
+        if (!t) { $(id).textContent = 'no data'; $(id).className = 'badge stale'; return; }
+        var age = (Date.now() / 1000 - t);
+        $(id).textContent = age.toFixed(1) + 's ago';
+        $(id).className = 'badge ' + (age > staleS ? 'stale' : 'ok');
+    }
+
+    function esc(s) {
+        var d = document.createElement('div'); d.textContent = s; return d.innerHTML;
+    }
+
+    window.onerror = function (msg, src, line) {
+        clientErrs.unshift({ t: Date.now() / 1000, msg: msg + ' (' + (src || '?').split('/').pop() + ':' + line + ')' });
+        renderClientErrs();
+    };
+    window.addEventListener('unhandledrejection', function (e) {
+        clientErrs.unshift({ t: Date.now() / 1000, msg: 'unhandled rejection: ' + e.reason });
+        renderClientErrs();
+    });
+
+    function renderClientErrs() {
+        $('clientErrBadge').textContent = clientErrs.length;
+        if (!clientErrs.length) { return; }
+        $('clientErr').innerHTML = clientErrs.slice(0, 50).map(function (e) {
+            return '<div class="err-line ERROR"><span class="et">' + new Date(e.t * 1000).toLocaleTimeString() +
+                   ' </span><span class="em">' + esc(String(e.msg)) + '</span></div>';
+        }).join('');
+    }
+
+    function renderHostErrs(errors) {
+        $('hostErrBadge').textContent = errors.length;
+        if (!errors.length) { return; }
+        $('hostErr').innerHTML = errors.map(function (e) {
+            return '<div class="err-line ' + esc(e.level) + '"><span class="et">' +
+                new Date(e.t * 1000).toLocaleTimeString() + ' </span><span class="es">[' + esc(e.source) +
+                ']</span> <span class="em">' + esc(e.msg) + '</span></div>';
+        }).join('');
+    }
+
+    function renderJoints(fb, t) {
+        if (!fb || !fb.length) { return; }
+        if (!jointsBuilt) {
+            var host = $('joints');
+            host.innerHTML = '';
+            JOINT_LABELS.forEach(function (jl, i) {
+                var w = document.createElement('div');
+                w.className = 'joint';
+                w.innerHTML = '<div class="jl"><span class="name">' + jl[0] +
+                    '</span><span class="sid">id ' + jl[1] + '</span><span class="val" id="jv' + i + '">--</span></div>' +
+                    '<div class="jbar"><div class="fill" id="jf' + i + '"></div><div class="mid"></div></div>';
+                host.appendChild(w);
+            });
+            jointsBuilt = true;
+        }
+        for (var i = 0; i < 12 && i < fb.length; i++) {
+            var v = Math.max(0, Math.min(1023, fb[i] | 0));
+            $('jv' + i).textContent = v;
+            $('jf' + i).style.width = (v / 1023 * 100) + '%';
+        }
+    }
+
+    function pollTelemetry() {
+        fetch('/api/telemetry').then(function (r) { return r.json(); }).then(function (d) {
+            $('cpu').textContent = d.rpi.cpu_load;
+            $('temp').textContent = d.rpi.cpu_temp.toFixed(1);
+            $('ram').textContent = d.rpi.ram_usage;
+            $('rssi').textContent = d.rpi.wifi_rssi;
+            $('fps').textContent = d.video_fps.toFixed(1);
+            $('cvMode').textContent = CV_NAMES[d.cv.mode] || d.cv.mode;
+            ageBadge('rpiAge', Date.now() / 1000, 5);
+
+            $('bat').textContent = d.battery != null ? d.battery.toFixed(2) : '--';
+            if (d.battery != null) {
+                var pct = Math.max(0, Math.min(100, (d.battery - 6.0) / 2.4 * 100));
+                $('batFill').style.width = pct + '%';
+                $('batFill').style.background = d.battery >= 7 ? 'var(--ok)' : (d.battery >= 6.5 ? 'var(--warn)' : 'var(--bad)');
+            }
+            ageBadge('espAge', d.esp32_last && d.esp32_last.T ? Date.now() / 1000 - 1 : 0, 8);
+            $('espRaw').textContent = d.esp32_last && d.esp32_last.T ? JSON.stringify(d.esp32_last) : '';
+
+            renderJoints(d.joints.fb, d.joints.t);
+            ageBadge('jAge', d.joints.t, 4);
+
+            renderHostErrs(d.errors || []);
+        }).catch(function () { $('rpiAge').textContent = 'link down'; $('rpiAge').className = 'badge err'; });
+    }
+
+    function pollVlm() {
+        fetch('/api/vlm').then(function (r) { return r.json(); }).then(function (d) {
+            var s = d.session;
+            $('vlmBadge').textContent = s ? s.state : (d.engine_loaded ? 'idle' : 'down');
+            $('vlmBadge').className = 'badge ' + (s && s.state === 'RUNNING' ? 'ok' : '');
+            var tail = s ? (s.log_tail || []) : [];
+            $('vlmLog').innerHTML = tail.length ? tail.map(function (e) {
+                return '<div class="err-line ' + esc(e.kind === 'reject' ? 'WARNING' : 'ERROR') + '"><span class="et">' +
+                    new Date((e.t || 0) * 1000).toLocaleTimeString() + ' </span><span class="es">[' + esc(e.kind) +
+                    ']</span> <span class="em">' + esc(e.note || e.reason || JSON.stringify(e.errors || [])) + '</span></div>';
+            }).join('') : '<div class="empty">no vlm session events</div>';
+        }).catch(function () {
+            $('vlmBadge').textContent = 'down';
+            $('vlmBadge').className = 'badge err';
+        });
+    }
+
+    setInterval(pollTelemetry, 1500);
+    setInterval(pollVlm, 3000);
+    pollTelemetry();
+    pollVlm();
+})();
+</script>
+</body>
+</html>

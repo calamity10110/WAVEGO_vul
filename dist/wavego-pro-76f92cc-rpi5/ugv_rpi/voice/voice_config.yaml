@@ -1,0 +1,51 @@
+api_base: http://127.0.0.1:5000
+move_timeout_s: 3.0
+
+mic:
+  name_hint: C-Media
+  fallback_index: 1
+  sample_rate: 16000
+
+vad:
+  rms_threshold: 0.02
+  min_speech_ms: 300
+  silence_ms: 800
+  max_utterance_s: 6
+  cooldown_ms: 300
+
+asr:
+  model: tiny
+
+speaker:
+  feedback: true
+  aplay_device: plughw:0,0
+
+# First matching phrase wins: keep more specific entries above generic ones
+# ("stop following" must come before "stop").
+commands:
+  - phrases: ["stop task", "cancel task", "stop mission", "abort task"]
+    vlm_stop: true
+  - phrases: ["stop following", "cancel follow", "stop follow"]
+    cv: {mode: none}
+  - phrases: ["follow me", "follow person", "follow"]
+    cv: {mode: person}
+  - phrases: ["find the ball", "get the ball"]
+    vlm: {goal: "Find a ball and stop in front of it"}
+  - phrases: ["vision task", "start task", "explore"]
+    vlm: {goal: "Explore forward slowly and stop when something notable is centered in view"}
+  - phrases: ["stop", "halt", "whoa"]
+    cmd: {"T": 111, "FB": 0, "LR": 0}
+  - phrases: ["sit down", "lie down", "stay low", "sit"]
+    cmd: {"T": 112, "func": 1}
+  - phrases: ["stand up", "stand"]
+    cmd: {"T": 110}
+  - phrases: ["jump"]
+    cmd: {"T": 112, "func": 3}
+  - phrases: ["go back", "back up", "backward", "back"]
+    cmd: {"T": 111, "FB": -1, "LR": 0}
+  - phrases: ["walk forward", "go forward", "come here", "forward", "come"]
+    cmd: {"T": 111, "FB": 1, "LR": 0}
+  - phrases: ["turn left", "left"]
+    cmd: {"T": 111, "FB": 0, "LR": -1}
+  - phrases: ["turn right", "right"]
+    cmd: {"T": 111, "FB": 0, "LR": 1}

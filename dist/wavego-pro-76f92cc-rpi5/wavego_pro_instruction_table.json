@@ -1,0 +1,1642 @@
+{
+  "meta": {
+    "project": "Waveshare WAVEGO Pro - ESP32 Lower-Computer JSON Command Interface",
+    "source_of_truth": [
+      "wavego_pro_platformio/WAVEGO_Pro_PlatformIO/src/Config.h (command ID definitions)",
+      "wavego_pro_platformio/WAVEGO_Pro_PlatformIO/src/main.cpp (jsonCmdReceiveHandler dispatcher)",
+      "wavego_pro_platformio/WAVEGO_Pro_PlatformIO/src/BodyCtrl.cpp/.h (motion)",
+      "wavego_pro_platformio/WAVEGO_Pro_PlatformIO/src/RGBLight.cpp/.h (RGB LEDs)",
+      "wavego_pro_platformio/WAVEGO_Pro_PlatformIO/src/ScreenCtrl.cpp/.h (OLED)",
+      "wavego_pro_platformio/WAVEGO_Pro_PlatformIO/src/web_page.h (web UI senders)"
+    ],
+    "transport": [
+      {
+        "type": "UART serial",
+        "format": "One JSON object per line, newline-terminated",
+        "baud": 115200,
+        "note": "Used by Raspberry Pi upper computer (ugv_rpi app.py: /dev/ttyAMA0 or /dev/serial0 @115200)"
+      },
+      {
+        "type": "HTTP GET",
+        "format": "http://<ip>/js?json=<url-encoded-json>",
+        "ip_ap_mode": "192.168.4.1 (ESP32-only AP 'WAVEGO')",
+        "note": "Web UI (web_page.h) uses this endpoint; response body = JSON feedback string"
+      },
+      {
+        "type": "ESP-NOW",
+        "note": "Peer JSON payloads are routed into the same jsonCmdReceiveHandler when espnowInit is active"
+      }
+    ],
+    "command_envelope": "Every command is a JSON object with mandatory integer field 'T' (command type). Optional fields depend on T.",
+    "assembly_mode": "Servo-level commands (T:102, T:103) require assembly/debug mode: G12/DEBUG_PIN pulled HIGH (jumper G12 to 3V3).",
+    "servo_id_map": {
+      "joint_index_0_11": [
+        53,
+        52,
+        51,
+        41,
+        42,
+        43,
+        23,
+        22,
+        21,
+        31,
+        32,
+        33
+      ],
+      "layout": {
+        "front_left_leg": "joints [0]=LF_A, [1]=LF_B, [2]=LF_H (servos 53,52,51)",
+        "hind_left_leg": "joints [3]=LH_A, [4]=LH_B, [5]=LH_H (servos 41,42,43)",
+        "front_right_leg": "joints [6]=RF_A, [7]=RF_B, [8]=RF_H (servos 23,22,21)",
+        "hind_right_leg": "joints [9]=RH_A, [10]=RH_B, [11]=RH_H (servos 31,32,33)"
+      },
+      "leg_numbering_single_leg_ctrl": {
+        "1": "front-left",
+        "2": "hind-left",
+        "3": "front-right",
+        "4": "hind-right"
+      },
+      "position_range": "0..1023, middle/zero = 511"
+    }
+  },
+  "commands": {
+    "body_motion": [
+      {
+        "T": 1,
+        "cmd": "CMD_UGV_CTRL",
+        "description": "Differential-drive style vector input, converted to gait direction (compat layer for generic Waveshare UGV upper computers).",
+        "payload": {
+          "L": "float left speed (sign = direction)",
+          "R": "float right speed (sign = direction)"
+        },
+        "handler": "main.cpp -> BodyCtrl::ugvCtrl(L, R)",
+        "example": {
+          "T": 1,
+          "L": 0.5,
+          "R": 0.5
+        },
+        "notes": "L==R>0 -> forward; L==R<0 -> backward; L==-R -> turn in place; mixed signs -> diagonal gait direction."
+      },
+      {
+        "T": 101,
+        "cmd": "CMD_JOINT_MIDDLE",
+        "description": "Move all 12 joints to mid position (511).",
+        "payload": {},
+        "handler": "main.cpp -> BodyCtrl::jointMiddle()",
+        "example": {
+          "T": 101
+        }
+      },
+      {
+        "T": 102,
+        "cmd": "CMD_RELEASE_TORQUE",
+        "description": "Release torque lock on all servos (limp).",
+        "payload": {},
+        "handler": "main.cpp -> BodyCtrl::releaseTorque()",
+        "example": {
+          "T": 102
+        },
+        "notes": "Assembly mode only (G12 to 3V3)."
+      },
+      {
+        "T": 103,
+        "cmd": "CMD_SINGLE_SERVO_CTRL",
+        "description": "Drive one bus servo directly to a raw position.",
+        "payload": {
+          "id": "u8 servo ID (e.g. 21..53)",
+          "goal": "int target position 0..1023",
+          "time": "int ms to reach goal (used when spd=0)",
+          "spd": "int speed (0 = use time)"
+        },
+        "handler": "main.cpp -> BodyCtrl::singleServoCtrl(id, goal, time, spd)",
+        "example": {
+          "T": 103,
+          "id": 21,
+          "goal": 511,
+          "time": 0,
+          "spd": 0
+        },
+        "notes": "Assembly mode only (G12 to 3V3). Not recommended for locomotion after assembly - use T:111."
+      },
+      {
+        "T": 104,
+        "cmd": "CMD_GET_JOINTS_ZERO",
+        "description": "Get the zero-position array of all 12 joints (printed to serial).",
+        "payload": {},
+        "handler": "main.cpp -> BodyCtrl::getJointsZeroPosArray()",
+        "example": {
+          "T": 104
+        },
+        "response": "12 lines 'Joint <i>: <pos>' on serial."
+      },
+      {
+        "T": 105,
+        "cmd": "CMD_SET_JOINTS_ZERO",
+        "description": "Set the zero-position array of all 12 joints.",
+        "payload": {
+          "set": "int[12] zero positions, each ~0..1023"
+        },
+        "handler": "main.cpp -> BodyCtrl::setJointsZeroPosArray(set[])",
+        "example": {
+          "T": 105,
+          "set": [
+            511,
+            511,
+            511,
+            511,
+            511,
+            511,
+            511,
+            511,
+            511,
+            511,
+            511,
+            511
+          ]
+        },
+        "notes": "Persisted calibration; also written into the 'boot' mission by T:107."
+      },
+      {
+        "T": 106,
+        "cmd": "CMD_GET_CURRENT_POS",
+        "description": "Read current position feedback of all 12 servos.",
+        "payload": {},
+        "handler": "main.cpp -> BodyCtrl::getServoFeedback()",
+        "example": {
+          "T": 106
+        },
+        "response": {
+          "T": -106,
+          "fb": "int[12] current positions"
+        }
+      },
+      {
+        "T": 107,
+        "cmd": "CMD_SET_CURRENT_POS_ZERO",
+        "description": "Calibrate: store current physical positions of all joints as the new zero positions.",
+        "payload": {},
+        "handler": "main.cpp -> BodyCtrl::setCurrentPosZero()",
+        "example": {
+          "T": 107
+        },
+        "response": {
+          "T": 105,
+          "set": "int[12] new zero array (also appended to 'boot' mission in LittleFS)"
+        }
+      },
+      {
+        "T": 108,
+        "cmd": "CMD_CTRL_JOINT_ANGLE",
+        "description": "Move a single joint to an angle (degrees), then trigger interpolation.",
+        "payload": {
+          "joint": "int joint index 0..11",
+          "angle": "double target angle in degrees"
+        },
+        "handler": "main.cpp -> BodyCtrl::jointAngle(joint, angle) + moveTrigger()",
+        "example": {
+          "T": 108,
+          "joint": 1,
+          "angle": 45
+        }
+      },
+      {
+        "T": 109,
+        "cmd": "CMD_CTRL_JOINT_RAD",
+        "description": "Move a single joint to an angle (radians), then trigger interpolation.",
+        "payload": {
+          "joint": "int joint index 0..11",
+          "rad": "double target angle in radians"
+        },
+        "handler": "main.cpp -> BodyCtrl::jointRad(joint, rad) + moveTrigger()",
+        "example": {
+          "T": 109,
+          "joint": 1,
+          "rad": 0.785
+        }
+      },
+      {
+        "T": 110,
+        "cmd": "CMD_STAND_UP",
+        "description": "Stand up at default height (STAND_HEIGHT = 95).",
+        "payload": {},
+        "handler": "main.cpp -> BodyCtrl::stand()",
+        "example": {
+          "T": 110
+        }
+      },
+      {
+        "T": 111,
+        "cmd": "CMD_BASIC_MOVE",
+        "description": "Primary locomotion vector command - starts/steers the triangular gait engine.",
+        "payload": {
+          "FB": "int -1 | 0 | +1 (forward/backward component)",
+          "LR": "int -1 | 0 | +1 (left/right strafe or turn component)"
+        },
+        "handler": "main.cpp -> BodyCtrl::inputCmd(FB, LR); consumed by robotCtrl() loop",
+        "example": {
+          "T": 111,
+          "FB": 1,
+          "LR": 0
+        },
+        "gait_direction_map": {
+          "FB=1,LR=0": "forward (0 deg)",
+          "FB=-1,LR=0": "backward (180 deg)",
+          "FB=1,LR=-1": "forward-left (30 deg)",
+          "FB=1,LR=1": "forward-right (-30 deg)",
+          "FB=-1,LR=1": "back-right (-120 deg)",
+          "FB=-1,LR=-1": "back-left (120 deg)",
+          "FB=0,LR=-1": "turn left (turnCmd=-1)",
+          "FB=0,LR=1": "turn right (turnCmd=1)",
+          "FB=0,LR=0": "stop -> stand at mass center"
+        },
+        "notes": "Values beyond -1/0/1 are also accepted by the web UI (analog joystick) but the reference UI uses -1/0/1."
+      },
+      {
+        "T": 112,
+        "cmd": "CMD_BASIC_FUNC",
+        "description": "Trigger built-in demo functions / balancing mode.",
+        "payload": {
+          "func": "int selector: 1=StayLow, 2=HandShake, 3=Jump, 4=steady START, 5=steady STOP"
+        },
+        "handler": "main.cpp switch -> BodyCtrl::functionStayLow/Handshake/Jump; steadyMode flag + BodyCtrl::standUp(95) on stop",
+        "example": {
+          "T": 112,
+          "func": 2
+        },
+        "notes": "func=4 enables IMU self-balancing loop (main loop: accXYZUpdate + BodyCtrl::balancing(ACC_X, ACC_Y) using ICM20948); func=5 disables and returns to stand."
+      },
+      {
+        "T": 113,
+        "cmd": "CMD_SINGLE_LEG_CTRL",
+        "description": "Move one leg tip to a cartesian target (debug/advanced).",
+        "payload": {
+          "leg": "u8 leg 1..4",
+          "x": "double mm forward axis",
+          "y": "double mm height axis",
+          "z": "double mm lateral axis"
+        },
+        "handler": "main.cpp -> BodyCtrl::singleLegCtrl(leg, x, y, z) + moveTrigger()",
+        "example": {
+          "T": 113,
+          "leg": 1,
+          "x": 16,
+          "y": 90,
+          "z": 25
+        }
+      },
+      {
+        "T": 114,
+        "cmd": "CMD_STAND_UP_HEIGHT",
+        "description": "Stand at an explicit body height.",
+        "payload": {
+          "h": "double height in mm (clamped by WALK_HEIGHT_MIN..MAX, default 75..110)"
+        },
+        "handler": "main.cpp -> BodyCtrl::standUp(h)",
+        "example": {
+          "T": 114,
+          "h": 95
+        }
+      },
+      {
+        "T": 115,
+        "cmd": "CMD_SET_INTERPOLATION_PARAMS",
+        "description": "Tune gait/interpolation timing.",
+        "payload": {
+          "delay": "int ms delay per gait iteration (default 5)",
+          "iterate": "float global step increment per iteration (default 0.02, range 0..1)"
+        },
+        "handler": "main.cpp -> BodyCtrl::setInterpolationParams(delay, iterate)",
+        "example": {
+          "T": 115,
+          "delay": 5,
+          "iterate": 0.02
+        }
+      },
+      {
+        "T": 116,
+        "cmd": "CMD_SET_GAIT_PARAMS",
+        "description": "Tune all gait geometry parameters.",
+        "payload": {
+          "maxHeight": "double (default 110)",
+          "minHeight": "double (default 75)",
+          "height": "double standing height (default 95)",
+          "lift": "double swing lift (default 9; height+lift <= maxHeight)",
+          "range": "double stride range (default 40)",
+          "acc": "double acceleration component (default 5)",
+          "extendedX": "double default leg x offset (default 16)",
+          "extendedZ": "double default leg z offset (default 25)",
+          "sideMax": "double lateral limit (default 30)",
+          "massAdjust": "double mass-center adjust (default 21)"
+        },
+        "handler": "main.cpp -> BodyCtrl::setGaitParams(...)",
+        "example": {
+          "T": 116,
+          "maxHeight": 110,
+          "minHeight": 75,
+          "height": 95,
+          "lift": 9,
+          "range": 40,
+          "acc": 5,
+          "extendedX": 16,
+          "extendedZ": 25,
+          "sideMax": 30,
+          "massAdjust": 21
+        }
+      },
+      {
+        "T": 133,
+        "cmd": "CMD_PT_CTRL",
+        "description": "Pan-tilt style body pose command (compat with UGV gimbal UI): maps X/Y onto body pitch/yaw posture.",
+        "payload": {
+          "X": "float -180..180 -> yaw -30..+30 deg",
+          "Y": "float -30..30 -> pitch -17.5..+17.5 deg"
+        },
+        "handler": "main.cpp -> BodyCtrl::ptCtrl(X, Y) -> pitchYawRoll(pitch, yaw, 0)",
+        "example": {
+          "T": 133,
+          "X": 0,
+          "Y": 0
+        }
+      }
+    ],
+    "rgb_light": [
+      {
+        "T": 201,
+        "cmd": "CMD_SET_COLOR",
+        "description": "Set color of one RGB LED (2x WS2812/NeoPixel on GPIO26).",
+        "payload": {
+          "set": "int[4] = [id, r, g, b]; id: 0=left LED, 1=right LED; r/g/b: 0..255"
+        },
+        "handler": "main.cpp -> RGBLight::setColor(id, r, g, b) (Adafruit_NeoPixel, NEO_GRB + NEO_KHZ800)",
+        "example": {
+          "T": 201,
+          "set": [
+            0,
+            9,
+            0,
+            0
+          ]
+        },
+        "notes": "Firmware quirk: RGBLight.cpp calls pixels.Color(g, r, b), so the red and green channels are swapped on the physical strip. Boot colors: LED0=(255,0,64), LED1=(64,0,255); assembly mode: both orange (255,64,0)."
+      }
+    ],
+    "screen_oled": [
+      {
+        "T": 202,
+        "cmd": "CMD_DISPLAY_SINGLE",
+        "description": "Write one of the 4 text lines on the 128x32 SSD1306 OLED (I2C 0x3C).",
+        "payload": {
+          "line": "int 1..4",
+          "text": "string content of the line",
+          "update": "bool 1=refresh panel now, 0=buffer only"
+        },
+        "handler": "main.cpp -> ScreenCtrl::changeSingleLine(line, text, update)",
+        "example": {
+          "T": 202,
+          "line": 1,
+          "text": "Hello, world!",
+          "update": 1
+        }
+      },
+      {
+        "T": 203,
+        "cmd": "CMD_DISPLAY_UPDATE",
+        "description": "Refresh the OLED with the currently buffered 4 lines.",
+        "payload": {},
+        "handler": "main.cpp -> ScreenCtrl::updateFrame()",
+        "example": {
+          "T": 203
+        }
+      },
+      {
+        "T": 204,
+        "cmd": "CMD_DISPLAY_FRAME",
+        "description": "Write all 4 lines at once and refresh.",
+        "payload": {
+          "l1": "string line 1",
+          "l2": "string line 2",
+          "l3": "string line 3",
+          "l4": "string line 4"
+        },
+        "handler": "main.cpp -> 4x changeSingleLine(...) with final update=true",
+        "example": {
+          "T": 204,
+          "l1": "Hello, world!",
+          "l2": "Hello, world!",
+          "l3": "Hello, world!",
+          "l4": "Hello, world!"
+        },
+        "notes": "4 lines x 8px at text size 1; ~21 chars per line fit the 128px width."
+      },
+      {
+        "T": 205,
+        "cmd": "CMD_DISPLAY_CLEAR",
+        "description": "Clear the OLED.",
+        "payload": {},
+        "handler": "main.cpp -> ScreenCtrl::clearDisplay()",
+        "example": {
+          "T": 205
+        }
+      }
+    ],
+    "buzzer": [
+      {
+        "T": 206,
+        "cmd": "CMD_BUZZER_CTRL",
+        "description": "Active buzzer beep (GPIO21).",
+        "payload": {
+          "freq": "int frequency in Hz",
+          "duration": "int duration in ms (blocking)"
+        },
+        "handler": "main.cpp -> buzzerCtrl(freq, duration) (tone/noTone)",
+        "example": {
+          "T": 206,
+          "freq": 1000,
+          "duration": 10
+        }
+      }
+    ],
+    "power": [
+      {
+        "T": 207,
+        "cmd": "CMD_GET_BATTERY_VOLTAGE",
+        "description": "Read battery voltage via INA219 (I2C 0x42).",
+        "payload": {},
+        "handler": "main.cpp -> InaDataUpdate()",
+        "example": {
+          "T": 207
+        },
+        "response": {
+          "T": -207,
+          "voltage": "float load voltage in V (2S 18650: ~6.4-8.4 V)"
+        }
+      }
+    ],
+    "files_missions": [
+      {
+        "T": 300,
+        "cmd": "CMD_SCAN_FILES",
+        "description": "List all mission files in LittleFS (printed to serial).",
+        "payload": {},
+        "handler": "main.cpp -> FilesCtrl::scan()",
+        "example": {
+          "T": 300
+        }
+      },
+      {
+        "T": 301,
+        "cmd": "CMD_CREATE_MISSION",
+        "description": "Create a mission file (/name.mission).",
+        "payload": {
+          "name": "string mission name",
+          "intro": "string description comment"
+        },
+        "handler": "main.cpp -> FilesCtrl::createMission(name, intro)",
+        "example": {
+          "T": 301,
+          "name": "mission1",
+          "intro": "introduction for this mission file."
+        }
+      },
+      {
+        "T": 302,
+        "cmd": "CMD_MISSION_CONTENT",
+        "description": "Print the content of a mission file (each step is one JSON command).",
+        "payload": {
+          "name": "string mission name"
+        },
+        "handler": "main.cpp -> FilesCtrl::missionContent(name)",
+        "example": {
+          "T": 302,
+          "name": "boot"
+        }
+      },
+      {
+        "T": 303,
+        "cmd": "CMD_APPEND_SETP_JSON",
+        "description": "Append a JSON command as a new step at the end of a mission.",
+        "payload": {
+          "name": "string mission name",
+          "json": "string containing a full command JSON"
+        },
+        "handler": "main.cpp -> FilesCtrl::appendStep(name, json)",
+        "example": {
+          "T": 303,
+          "name": "boot",
+          "json": "{\"T\":201,\"set\":[0,9,0,0]}"
+        }
+      },
+      {
+        "T": 304,
+        "cmd": "CMD_INSERT_SETP_JSON",
+        "description": "Insert a JSON command step before the given step number.",
+        "payload": {
+          "name": "string mission name",
+          "step": "int step number (1-based)",
+          "json": "string command JSON"
+        },
+        "handler": "main.cpp -> FilesCtrl::insertStep(name, step, json)",
+        "example": {
+          "T": 304,
+          "name": "boot",
+          "step": 2,
+          "json": "{\"T\":201,\"set\":[0,9,0,0]}"
+        }
+      },
+      {
+        "T": 305,
+        "cmd": "CMD_REPLACE_SETP_JSON",
+        "description": "Replace the JSON command at a given step number.",
+        "payload": {
+          "name": "string mission name",
+          "step": "int step number (1-based)",
+          "json": "string command JSON"
+        },
+        "handler": "main.cpp -> FilesCtrl::replaceStep(name, step, json)",
+        "example": {
+          "T": 305,
+          "name": "boot",
+          "step": 2,
+          "json": "{\"T\":201,\"set\":[0,9,0,0]}"
+        }
+      },
+      {
+        "T": 306,
+        "cmd": "CMD_DELETE_SETP",
+        "description": "Delete one step from a mission.",
+        "payload": {
+          "name": "string mission name",
+          "step": "int step number (1-based)"
+        },
+        "handler": "main.cpp -> FilesCtrl::deleteStep(name, step)",
+        "example": {
+          "T": 306,
+          "name": "boot",
+          "step": 2
+        }
+      },
+      {
+        "T": 307,
+        "cmd": "CMD_RUN_STEP",
+        "description": "Execute a single mission step immediately.",
+        "payload": {
+          "name": "string mission name",
+          "step": "int step number (1-based)"
+        },
+        "handler": "main.cpp -> runStep(name, step) -> jsonCmdReceiveHandler",
+        "example": {
+          "T": 307,
+          "name": "boot",
+          "step": 2
+        },
+        "notes": "Coupling function: the step itself is a full command JSON."
+      },
+      {
+        "T": 308,
+        "cmd": "CMD_RUN_MISSION",
+        "description": "Execute a whole mission, looping.",
+        "payload": {
+          "name": "string mission name",
+          "interval": "int ms delay between steps (50 ms internal time offset subtracted)",
+          "loop": "int loop count (-1 = infinite)"
+        },
+        "handler": "main.cpp -> runMission(name, interval, loop)",
+        "example": {
+          "T": 308,
+          "name": "boot",
+          "interval": 1000,
+          "loop": 1
+        },
+        "notes": "Blocking; incoming serial data aborts the mission loop."
+      },
+      {
+        "T": 309,
+        "cmd": "CMD_DELETE_MISSION",
+        "description": "Delete a mission file.",
+        "payload": {
+          "name": "string mission name"
+        },
+        "handler": "main.cpp -> FilesCtrl::deleteMission(name)",
+        "example": {
+          "T": 309,
+          "name": "boot"
+        }
+      },
+      {
+        "T": 399,
+        "cmd": "CMD_FORMAT_FLASH",
+        "description": "Format LittleFS (wipes ALL missions, including 'boot' WiFi/calibration config).",
+        "payload": {},
+        "handler": "main.cpp -> FilesCtrl::flash() -> LittleFS.format()",
+        "example": {
+          "T": 399
+        }
+      }
+    ],
+    "wireless_wifi": [
+      {
+        "T": 400,
+        "cmd": "CMD_SET_WIFI_MODE",
+        "description": "Configure WiFi AP and/or STA credentials; result is persisted into the 'boot' mission (auto-applied at power-on).",
+        "payload": {
+          "mode": "int 0 = clear/reset wifi config, 1 = set AP(+STA) config",
+          "ap_ssid": "string AP SSID",
+          "ap_password": "string AP password (min 8 chars)",
+          "channel": "int WiFi channel",
+          "sta_ssid": "string STA SSID (empty = AP only)",
+          "sta_password": "string STA password"
+        },
+        "handler": "main.cpp -> Wireless::setWifiMode(...) + FilesCtrl::checkReplaceStep('boot', echo)",
+        "example": {
+          "T": 400,
+          "mode": 1,
+          "ap_ssid": "WAVEGO",
+          "ap_password": "12345678",
+          "channel": 1,
+          "sta_ssid": "",
+          "sta_password": ""
+        },
+        "response": "Echo of the stored config as {\"T\":400,...}"
+      },
+      {
+        "T": 401,
+        "cmd": "CMD_WIFI_INFO",
+        "description": "Print the stored WiFi config command from the 'boot' mission.",
+        "payload": {},
+        "handler": "main.cpp -> FilesCtrl::findCmdByType('boot', CMD_SET_WIFI_MODE)",
+        "example": {
+          "T": 401
+        }
+      },
+      {
+        "T": 402,
+        "cmd": "CMD_GET_AP_IP",
+        "description": "Print the AP-mode IP address.",
+        "payload": {},
+        "handler": "main.cpp -> Wireless::getAPIP()",
+        "example": {
+          "T": 402
+        }
+      },
+      {
+        "T": 403,
+        "cmd": "CMD_GET_STA_IP",
+        "description": "Print the STA-mode IP address.",
+        "payload": {},
+        "handler": "main.cpp -> Wireless::getSTAIP()",
+        "example": {
+          "T": 403
+        }
+      }
+    ],
+    "esp_now": [
+      {
+        "T": 410,
+        "cmd": "CMD_INIT_ESP_NOW",
+        "description": "Initialize ESP-NOW.",
+        "payload": {
+          "longrange": "bool enable long-range mode"
+        },
+        "handler": "main.cpp -> Wireless::espnowInit(longrange)",
+        "example": {
+          "T": 410,
+          "longrange": 0
+        }
+      },
+      {
+        "T": 411,
+        "cmd": "CMD_SET_ESP_NOW_MODE",
+        "description": "Enable/disable ESP-NOW receive.",
+        "payload": {
+          "mode": "int 0 = off, 1 = on (default)"
+        },
+        "handler": "main.cpp -> Wireless::setEspNowMode(mode)",
+        "example": {
+          "T": 411,
+          "mode": 1
+        }
+      },
+      {
+        "T": 412,
+        "cmd": "CMD_GET_MAC",
+        "description": "Print this device's MAC address.",
+        "payload": {},
+        "handler": "main.cpp -> Wireless::macToString(Wireless::getMac())",
+        "example": {
+          "T": 412
+        }
+      },
+      {
+        "T": 413,
+        "cmd": "CMD_ESP_NOW_SEND",
+        "description": "Send a JSON payload to a peer over ESP-NOW.",
+        "payload": {
+          "mac": "string peer MAC ('FF,FF,FF,FF,FF,FF' format)",
+          "data": "string JSON command to deliver"
+        },
+        "handler": "main.cpp -> Wireless::sendEspNow(mac, data)",
+        "example": {
+          "T": 413,
+          "mac": "FF,FF,FF,FF,FF,FF",
+          "data": "{\"T\":205,\"freq\":500,\"duration\":30}"
+        }
+      },
+      {
+        "T": 414,
+        "cmd": "CMD_ADD_MAC",
+        "description": "Register a peer MAC for ESP-NOW broadcast.",
+        "payload": {
+          "mac": "string peer MAC ('FF:FF:FF:FF:FF:FF' format)"
+        },
+        "handler": "main.cpp -> Wireless::addMacToPeerString(mac)",
+        "example": {
+          "T": 414,
+          "mac": "FF:FF:FF:FF:FF:FF"
+        }
+      }
+    ],
+    "system": [
+      {
+        "T": 600,
+        "cmd": "ESP32_REBOOT",
+        "description": "Reboot the ESP32.",
+        "payload": {},
+        "handler": "main.cpp -> ESP.restart()",
+        "example": {
+          "T": 600
+        }
+      },
+      {
+        "T": 601,
+        "cmd": "CMD_CLEAR_NVS",
+        "description": "Erase and re-init NVS flash.",
+        "payload": {},
+        "handler": "main.cpp -> nvs_flash_erase() + nvs_flash_init()",
+        "example": {
+          "T": 601
+        }
+      }
+    ]
+  },
+  "instruction_table": [
+    {
+      "T": 1,
+      "cmd": "CMD_UGV_CTRL",
+      "group": "body_motion",
+      "params": "L: float left speed (sign = direction); R: float right speed (sign = direction)",
+      "response": "-",
+      "example": {
+        "T": 1,
+        "L": 0.5,
+        "R": 0.5
+      }
+    },
+    {
+      "T": 101,
+      "cmd": "CMD_JOINT_MIDDLE",
+      "group": "body_motion",
+      "params": "-",
+      "response": "-",
+      "example": {
+        "T": 101
+      }
+    },
+    {
+      "T": 102,
+      "cmd": "CMD_RELEASE_TORQUE",
+      "group": "body_motion",
+      "params": "-",
+      "response": "-",
+      "example": {
+        "T": 102
+      }
+    },
+    {
+      "T": 103,
+      "cmd": "CMD_SINGLE_SERVO_CTRL",
+      "group": "body_motion",
+      "params": "id: u8 servo ID (e.g. 21..53); goal: int target position 0..1023; time: int ms to reach goal (used when spd=0); spd: int speed (0 = use time)",
+      "response": "-",
+      "example": {
+        "T": 103,
+        "id": 21,
+        "goal": 511,
+        "time": 0,
+        "spd": 0
+      }
+    },
+    {
+      "T": 104,
+      "cmd": "CMD_GET_JOINTS_ZERO",
+      "group": "body_motion",
+      "params": "-",
+      "response": "12 lines 'Joint <i>: <pos>' on serial.",
+      "example": {
+        "T": 104
+      }
+    },
+    {
+      "T": 105,
+      "cmd": "CMD_SET_JOINTS_ZERO",
+      "group": "body_motion",
+      "params": "set: int[12] zero positions, each ~0..1023",
+      "response": "-",
+      "example": {
+        "T": 105,
+        "set": [
+          511,
+          511,
+          511,
+          511,
+          511,
+          511,
+          511,
+          511,
+          511,
+          511,
+          511,
+          511
+        ]
+      }
+    },
+    {
+      "T": 106,
+      "cmd": "CMD_GET_CURRENT_POS",
+      "group": "body_motion",
+      "params": "-",
+      "response": "{\"T\": -106, \"fb\": \"int[12] current positions\"}",
+      "example": {
+        "T": 106
+      }
+    },
+    {
+      "T": 107,
+      "cmd": "CMD_SET_CURRENT_POS_ZERO",
+      "group": "body_motion",
+      "params": "-",
+      "response": "{\"T\": 105, \"set\": \"int[12] new zero array (also appended to 'boot' mission in LittleFS)\"}",
+      "example": {
+        "T": 107
+      }
+    },
+    {
+      "T": 108,
+      "cmd": "CMD_CTRL_JOINT_ANGLE",
+      "group": "body_motion",
+      "params": "joint: int joint index 0..11; angle: double target angle in degrees",
+      "response": "-",
+      "example": {
+        "T": 108,
+        "joint": 1,
+        "angle": 45
+      }
+    },
+    {
+      "T": 109,
+      "cmd": "CMD_CTRL_JOINT_RAD",
+      "group": "body_motion",
+      "params": "joint: int joint index 0..11; rad: double target angle in radians",
+      "response": "-",
+      "example": {
+        "T": 109,
+        "joint": 1,
+        "rad": 0.785
+      }
+    },
+    {
+      "T": 110,
+      "cmd": "CMD_STAND_UP",
+      "group": "body_motion",
+      "params": "-",
+      "response": "-",
+      "example": {
+        "T": 110
+      }
+    },
+    {
+      "T": 111,
+      "cmd": "CMD_BASIC_MOVE",
+      "group": "body_motion",
+      "params": "FB: int -1 | 0 | +1 (forward/backward component); LR: int -1 | 0 | +1 (left/right strafe or turn component)",
+      "response": "-",
+      "example": {
+        "T": 111,
+        "FB": 1,
+        "LR": 0
+      }
+    },
+    {
+      "T": 112,
+      "cmd": "CMD_BASIC_FUNC",
+      "group": "body_motion",
+      "params": "func: int selector: 1=StayLow, 2=HandShake, 3=Jump, 4=steady START, 5=steady STOP",
+      "response": "-",
+      "example": {
+        "T": 112,
+        "func": 2
+      }
+    },
+    {
+      "T": 113,
+      "cmd": "CMD_SINGLE_LEG_CTRL",
+      "group": "body_motion",
+      "params": "leg: u8 leg 1..4; x: double mm forward axis; y: double mm height axis; z: double mm lateral axis",
+      "response": "-",
+      "example": {
+        "T": 113,
+        "leg": 1,
+        "x": 16,
+        "y": 90,
+        "z": 25
+      }
+    },
+    {
+      "T": 114,
+      "cmd": "CMD_STAND_UP_HEIGHT",
+      "group": "body_motion",
+      "params": "h: double height in mm (clamped by WALK_HEIGHT_MIN..MAX, default 75..110)",
+      "response": "-",
+      "example": {
+        "T": 114,
+        "h": 95
+      }
+    },
+    {
+      "T": 115,
+      "cmd": "CMD_SET_INTERPOLATION_PARAMS",
+      "group": "body_motion",
+      "params": "delay: int ms delay per gait iteration (default 5); iterate: float global step increment per iteration (default 0.02, range 0..1)",
+      "response": "-",
+      "example": {
+        "T": 115,
+        "delay": 5,
+        "iterate": 0.02
+      }
+    },
+    {
+      "T": 116,
+      "cmd": "CMD_SET_GAIT_PARAMS",
+      "group": "body_motion",
+      "params": "maxHeight: double (default 110); minHeight: double (default 75); height: double standing height (default 95); lift: double swing lift (default 9; height+lift <= maxHeight); range: double stride range (default 40); acc: double acceleration component (default 5); extendedX: double default leg x offset (default 16); extendedZ: double default leg z offset (default 25); sideMax: double lateral limit (default 30); massAdjust: double mass-center adjust (default 21)",
+      "response": "-",
+      "example": {
+        "T": 116,
+        "maxHeight": 110,
+        "minHeight": 75,
+        "height": 95,
+        "lift": 9,
+        "range": 40,
+        "acc": 5,
+        "extendedX": 16,
+        "extendedZ": 25,
+        "sideMax": 30,
+        "massAdjust": 21
+      }
+    },
+    {
+      "T": 133,
+      "cmd": "CMD_PT_CTRL",
+      "group": "body_motion",
+      "params": "X: float -180..180 -> yaw -30..+30 deg; Y: float -30..30 -> pitch -17.5..+17.5 deg",
+      "response": "-",
+      "example": {
+        "T": 133,
+        "X": 0,
+        "Y": 0
+      }
+    },
+    {
+      "T": 201,
+      "cmd": "CMD_SET_COLOR",
+      "group": "rgb_light",
+      "params": "set: int[4] = [id, r, g, b]; id: 0=left LED, 1=right LED; r/g/b: 0..255",
+      "response": "-",
+      "example": {
+        "T": 201,
+        "set": [
+          0,
+          9,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "T": 202,
+      "cmd": "CMD_DISPLAY_SINGLE",
+      "group": "screen_oled",
+      "params": "line: int 1..4; text: string content of the line; update: bool 1=refresh panel now, 0=buffer only",
+      "response": "-",
+      "example": {
+        "T": 202,
+        "line": 1,
+        "text": "Hello, world!",
+        "update": 1
+      }
+    },
+    {
+      "T": 203,
+      "cmd": "CMD_DISPLAY_UPDATE",
+      "group": "screen_oled",
+      "params": "-",
+      "response": "-",
+      "example": {
+        "T": 203
+      }
+    },
+    {
+      "T": 204,
+      "cmd": "CMD_DISPLAY_FRAME",
+      "group": "screen_oled",
+      "params": "l1: string line 1; l2: string line 2; l3: string line 3; l4: string line 4",
+      "response": "-",
+      "example": {
+        "T": 204,
+        "l1": "Hello, world!",
+        "l2": "Hello, world!",
+        "l3": "Hello, world!",
+        "l4": "Hello, world!"
+      }
+    },
+    {
+      "T": 205,
+      "cmd": "CMD_DISPLAY_CLEAR",
+      "group": "screen_oled",
+      "params": "-",
+      "response": "-",
+      "example": {
+        "T": 205
+      }
+    },
+    {
+      "T": 206,
+      "cmd": "CMD_BUZZER_CTRL",
+      "group": "buzzer",
+      "params": "freq: int frequency in Hz; duration: int duration in ms (blocking)",
+      "response": "-",
+      "example": {
+        "T": 206,
+        "freq": 1000,
+        "duration": 10
+      }
+    },
+    {
+      "T": 207,
+      "cmd": "CMD_GET_BATTERY_VOLTAGE",
+      "group": "power",
+      "params": "-",
+      "response": "{\"T\": -207, \"voltage\": \"float load voltage in V (2S 18650: ~6.4-8.4 V)\"}",
+      "example": {
+        "T": 207
+      }
+    },
+    {
+      "T": 300,
+      "cmd": "CMD_SCAN_FILES",
+      "group": "files_missions",
+      "params": "-",
+      "response": "-",
+      "example": {
+        "T": 300
+      }
+    },
+    {
+      "T": 301,
+      "cmd": "CMD_CREATE_MISSION",
+      "group": "files_missions",
+      "params": "name: string mission name; intro: string description comment",
+      "response": "-",
+      "example": {
+        "T": 301,
+        "name": "mission1",
+        "intro": "introduction for this mission file."
+      }
+    },
+    {
+      "T": 302,
+      "cmd": "CMD_MISSION_CONTENT",
+      "group": "files_missions",
+      "params": "name: string mission name",
+      "response": "-",
+      "example": {
+        "T": 302,
+        "name": "boot"
+      }
+    },
+    {
+      "T": 303,
+      "cmd": "CMD_APPEND_SETP_JSON",
+      "group": "files_missions",
+      "params": "name: string mission name; json: string containing a full command JSON",
+      "response": "-",
+      "example": {
+        "T": 303,
+        "name": "boot",
+        "json": "{\"T\":201,\"set\":[0,9,0,0]}"
+      }
+    },
+    {
+      "T": 304,
+      "cmd": "CMD_INSERT_SETP_JSON",
+      "group": "files_missions",
+      "params": "name: string mission name; step: int step number (1-based); json: string command JSON",
+      "response": "-",
+      "example": {
+        "T": 304,
+        "name": "boot",
+        "step": 2,
+        "json": "{\"T\":201,\"set\":[0,9,0,0]}"
+      }
+    },
+    {
+      "T": 305,
+      "cmd": "CMD_REPLACE_SETP_JSON",
+      "group": "files_missions",
+      "params": "name: string mission name; step: int step number (1-based); json: string command JSON",
+      "response": "-",
+      "example": {
+        "T": 305,
+        "name": "boot",
+        "step": 2,
+        "json": "{\"T\":201,\"set\":[0,9,0,0]}"
+      }
+    },
+    {
+      "T": 306,
+      "cmd": "CMD_DELETE_SETP",
+      "group": "files_missions",
+      "params": "name: string mission name; step: int step number (1-based)",
+      "response": "-",
+      "example": {
+        "T": 306,
+        "name": "boot",
+        "step": 2
+      }
+    },
+    {
+      "T": 307,
+      "cmd": "CMD_RUN_STEP",
+      "group": "files_missions",
+      "params": "name: string mission name; step: int step number (1-based)",
+      "response": "-",
+      "example": {
+        "T": 307,
+        "name": "boot",
+        "step": 2
+      }
+    },
+    {
+      "T": 308,
+      "cmd": "CMD_RUN_MISSION",
+      "group": "files_missions",
+      "params": "name: string mission name; interval: int ms delay between steps (50 ms internal time offset subtracted); loop: int loop count (-1 = infinite)",
+      "response": "-",
+      "example": {
+        "T": 308,
+        "name": "boot",
+        "interval": 1000,
+        "loop": 1
+      }
+    },
+    {
+      "T": 309,
+      "cmd": "CMD_DELETE_MISSION",
+      "group": "files_missions",
+      "params": "name: string mission name",
+      "response": "-",
+      "example": {
+        "T": 309,
+        "name": "boot"
+      }
+    },
+    {
+      "T": 399,
+      "cmd": "CMD_FORMAT_FLASH",
+      "group": "files_missions",
+      "params": "-",
+      "response": "-",
+      "example": {
+        "T": 399
+      }
+    },
+    {
+      "T": 400,
+      "cmd": "CMD_SET_WIFI_MODE",
+      "group": "wireless_wifi",
+      "params": "mode: int 0 = clear/reset wifi config, 1 = set AP(+STA) config; ap_ssid: string AP SSID; ap_password: string AP password (min 8 chars); channel: int WiFi channel; sta_ssid: string STA SSID (empty = AP only); sta_password: string STA password",
+      "response": "Echo of the stored config as {\"T\":400,...}",
+      "example": {
+        "T": 400,
+        "mode": 1,
+        "ap_ssid": "WAVEGO",
+        "ap_password": "12345678",
+        "channel": 1,
+        "sta_ssid": "",
+        "sta_password": ""
+      }
+    },
+    {
+      "T": 401,
+      "cmd": "CMD_WIFI_INFO",
+      "group": "wireless_wifi",
+      "params": "-",
+      "response": "-",
+      "example": {
+        "T": 401
+      }
+    },
+    {
+      "T": 402,
+      "cmd": "CMD_GET_AP_IP",
+      "group": "wireless_wifi",
+      "params": "-",
+      "response": "-",
+      "example": {
+        "T": 402
+      }
+    },
+    {
+      "T": 403,
+      "cmd": "CMD_GET_STA_IP",
+      "group": "wireless_wifi",
+      "params": "-",
+      "response": "-",
+      "example": {
+        "T": 403
+      }
+    },
+    {
+      "T": 410,
+      "cmd": "CMD_INIT_ESP_NOW",
+      "group": "esp_now",
+      "params": "longrange: bool enable long-range mode",
+      "response": "-",
+      "example": {
+        "T": 410,
+        "longrange": 0
+      }
+    },
+    {
+      "T": 411,
+      "cmd": "CMD_SET_ESP_NOW_MODE",
+      "group": "esp_now",
+      "params": "mode: int 0 = off, 1 = on (default)",
+      "response": "-",
+      "example": {
+        "T": 411,
+        "mode": 1
+      }
+    },
+    {
+      "T": 412,
+      "cmd": "CMD_GET_MAC",
+      "group": "esp_now",
+      "params": "-",
+      "response": "-",
+      "example": {
+        "T": 412
+      }
+    },
+    {
+      "T": 413,
+      "cmd": "CMD_ESP_NOW_SEND",
+      "group": "esp_now",
+      "params": "mac: string peer MAC ('FF,FF,FF,FF,FF,FF' format); data: string JSON command to deliver",
+      "response": "-",
+      "example": {
+        "T": 413,
+        "mac": "FF,FF,FF,FF,FF,FF",
+        "data": "{\"T\":205,\"freq\":500,\"duration\":30}"
+      }
+    },
+    {
+      "T": 414,
+      "cmd": "CMD_ADD_MAC",
+      "group": "esp_now",
+      "params": "mac: string peer MAC ('FF:FF:FF:FF:FF:FF' format)",
+      "response": "-",
+      "example": {
+        "T": 414,
+        "mac": "FF:FF:FF:FF:FF:FF"
+      }
+    },
+    {
+      "T": 600,
+      "cmd": "ESP32_REBOOT",
+      "group": "system",
+      "params": "-",
+      "response": "-",
+      "example": {
+        "T": 600
+      }
+    },
+    {
+      "T": 601,
+      "cmd": "CMD_CLEAR_NVS",
+      "group": "system",
+      "params": "-",
+      "response": "-",
+      "example": {
+        "T": 601
+      }
+    }
+  ],
+  "feedback_unsolicited": [
+    {
+      "T": 1001,
+      "description": "Periodic heartbeat/telemetry every 5 s (serial).",
+      "fields": {
+        "L": 0,
+        "R": 0,
+        "r": 0,
+        "p": 0,
+        "v": "battery voltage (V)",
+        "pan": 0,
+        "tilt": 0
+      },
+      "example": {
+        "T": 1001,
+        "L": 0,
+        "R": 0,
+        "r": 0,
+        "p": 0,
+        "v": 7.82,
+        "pan": 0,
+        "tilt": 0
+      }
+    },
+    {
+      "T": -106,
+      "description": "Response to CMD_GET_CURRENT_POS.",
+      "example": {
+        "T": -106,
+        "fb": [
+          511,
+          511,
+          511,
+          511,
+          511,
+          511,
+          511,
+          511,
+          511,
+          511,
+          511,
+          511
+        ]
+      }
+    },
+    {
+      "T": -207,
+      "description": "Response to CMD_GET_BATTERY_VOLTAGE.",
+      "example": {
+        "T": -207,
+        "voltage": 7.82
+      }
+    },
+    {
+      "T": 105,
+      "description": "Response to CMD_SET_CURRENT_POS_ZERO (echo of new zero array).",
+      "example": {
+        "T": 105,
+        "set": [
+          511,
+          511,
+          511,
+          511,
+          511,
+          511,
+          511,
+          511,
+          511,
+          511,
+          511,
+          511
+        ]
+      }
+    },
+    {
+      "T": 400,
+      "description": "Response to CMD_SET_WIFI_MODE (echo of stored WiFi config).",
+      "example": {
+        "T": 400,
+        "mode": 1,
+        "ap_ssid": "WAVEGO",
+        "ap_password": "12345678",
+        "channel": 1,
+        "sta_ssid": "",
+        "sta_password": ""
+      }
+    }
+  ],
+  "web_ui_notes": {
+    "index_html": "web_page.h serves a single-page UI at '/' with movement pad, function buttons (StayLow/HandShake/Jump/STEADY START/STOP), and a JSON command console (FEEDBACK INFORMATION box) posting to GET /js?json=",
+    "buttons_wiring": {
+      "movtionButton(FB, LR)": "sends {\"T\":111,\"FB\":..,\"LR\":..}",
+      "sendJsonCmd(str)": "sends any literal command string from the console/buttons (T:112 func 1..5, etc.)",
+      "ledCtrl()": "sends {\"T\":132,\"IO4\":..,\"IO5\":..} - NOT handled by this WAVEGO Pro firmware (dead template code from generic UGV web app)",
+      "gimbalSteady()/gimbalCtrl()": "send T:134/135/137 - NOT handled by this firmware (dead template code)"
+    }
+  },
+  "compatibility_notes": [
+    "The generic-UGV dead command surface has been removed from this WAVEGO Pro fork of ugv_rpi: emitters for T:0, T:141, T:132, T:210, T:501, T:502, T:-3 no longer exist in base_ctrl.py; their app.py dispatch entries, cv_ctrl.py light-flash paths, config.yaml code/fb/cmd_config keys, the settings.html bus-servo calibration wizard, and the control.js bindings (vars, keyboard 'f', socket base-light updater) were removed with them. The ESP32 firmware never implemented these commands.",
+    "Commands actually consumed from the RPi side by this firmware: T:1 (base_speed_ctrl), T:133 (gimbal_ctrl X/Y, SPD/ACC ignored), T:201 (rgb_light), T:202 (base_oled).",
+    "cv_ctrl.head_light_ctrl() now only manages cv_light_mode, which gates the T:201 RGB face-detection indicator; gesture/timelapse light-flash side effects were dropped.",
+    "Firmware serial baud is 115200 (Config.h BAUD_RATE); app.py opens the RPi UART at 115200 accordingly. base_ctrl.py's __main__ demo block now uses 115200 (corrected from 921600, a default inherited from other Waveshare UGV products).",
+    "The older WAVEGO (non-Pro) wiki documents only T:101..107; this Pro firmware adds T:1, T:108..116, T:133, T:201..207, T:300..399, T:400..414, T:600..601."
+  ],
+  "unused_code": {
+    "description": "Code that emits commands the WAVEGO Pro ESP32 firmware does not implement, or that is unreachable in this fork. Split into what was removed and what remains.",
+    "removed_in_this_fork": [
+      {
+        "location": "ugv_rpi/base_ctrl.py",
+        "item": "gimbal_emergency_stop",
+        "command": "T:0",
+        "reason": "Not in firmware dispatch"
+      },
+      {
+        "location": "ugv_rpi/base_ctrl.py",
+        "item": "gimbal_base_ctrl",
+        "command": "T:141",
+        "reason": "Not in firmware dispatch"
+      },
+      {
+        "location": "ugv_rpi/base_ctrl.py",
+        "item": "lights_ctrl + base_lights_ctrl + base/head_light_status",
+        "command": "T:132",
+        "reason": "IO4/IO5 PWM lights do not exist on WAVEGO Pro"
+      },
+      {
+        "location": "ugv_rpi/base_ctrl.py",
+        "item": "bus_servo_torque_lock",
+        "command": "T:210",
+        "reason": "Not in firmware dispatch"
+      },
+      {
+        "location": "ugv_rpi/base_ctrl.py",
+        "item": "bus_servo_id_set",
+        "command": "T:501",
+        "reason": "Not in firmware dispatch"
+      },
+      {
+        "location": "ugv_rpi/base_ctrl.py",
+        "item": "bus_servo_mid_set",
+        "command": "T:502",
+        "reason": "Not in firmware dispatch"
+      },
+      {
+        "location": "ugv_rpi/base_ctrl.py",
+        "item": "base_default_oled",
+        "command": "T:-3",
+        "reason": "Not in firmware dispatch"
+      },
+      {
+        "location": "ugv_rpi/app.py",
+        "item": "cmd_on_boot() + boot-time 'send -a -b'",
+        "command": "T:142, T:131, T:143, T:4, T:300, T:303",
+        "reason": "Ignored by firmware; T:300 collides with CMD_SCAN_FILES, T:303 collides with CMD_APPEND_SETP_JSON"
+      },
+      {
+        "location": "ugv_rpi/app.py",
+        "item": "set_version() serial write",
+        "command": "T:900",
+        "reason": "Not in firmware dispatch (local OSD display kept)"
+      },
+      {
+        "location": "ugv_rpi/app.py",
+        "item": "dispatch entries release/s_panid/s_tilid/set_mid/base_of/base_on/base_ct, fb.base_light key, boot light flashes, /settings route",
+        "command": "-",
+        "reason": "Callers of removed emitters"
+      },
+      {
+        "location": "ugv_rpi/cv_ctrl.py",
+        "item": "T:132 light-flash paths (gesture LED, photo/timelapse flash, color-track headlight)",
+        "command": "T:132",
+        "reason": "No lights on WAVEGO Pro; head_light_ctrl() reduced to cv_light_mode state machine gating the T:201 RGB face indicator"
+      },
+      {
+        "location": "ugv_rpi/config.yaml",
+        "item": "cmd_config x4 keys, code x7 keys, fb.base_light",
+        "command": "-",
+        "reason": "Config for removed emitters"
+      },
+      {
+        "location": "ugv_rpi/templates/",
+        "item": "settings.html (bus-servo wizard, deleted), index.html base-light + servo-setup sections, control.js vars/functions/keyboard-f/socket updater",
+        "command": "-",
+        "reason": "UI for removed emitters"
+      }
+    ],
+    "remaining_unused": [
+      {
+        "location": "ugv_rpi/cv_ctrl.py ~line 829",
+        "item": "Line-tracking CV mode drive output",
+        "command": "T:13",
+        "risk": "none (ignored)",
+        "details": "Wheeled-robot vector command; line-tracking mode cannot drive the gait engine - feature is non-functional on WAVEGO Pro"
+      },
+      {
+        "location": "ugv_rpi/templates/control.js ~1113",
+        "item": "Gamepad drive mapping",
+        "command": "T:13",
+        "risk": "none (ignored)",
+        "details": "Same wheeled-robot command from gamepad input"
+      },
+      {
+        "location": "ugv_rpi/templates/control.js ~749/753",
+        "item": "steadyCtrl() gimbal steady mode",
+        "command": "T:137",
+        "risk": "none (ignored)",
+        "details": "UGV gimbal-steady command; WAVEGO self-balancing is T:112 func 4/5 which is separately wired and live"
+      },
+      {
+        "location": "ugv_rpi/templates/control.js ~962/964",
+        "item": "Keyboard gimbal angle sends",
+        "command": "T:106",
+        "risk": "collides with CMD_GET_CURRENT_POS",
+        "details": "Firmware answers with servo position feedback {\"T\":-106,...} instead of moving - harmless but wrong semantics"
+      },
+      {
+        "location": "ugv_rpi/app.py cmdline 'send' handler",
+        "item": "ESP-NOW peer add/remove/broadcast CLI",
+        "command": "T:303, T:304, T:305, T:306",
+        "risk": "COLLIDES with mission-file commands",
+        "details": "T:303/304/305 map to CMD_APPEND/INSERT/REPLACE_SETP_JSON, T:306 to CMD_DELETE_SETP. Invoking 'send ...' via the /send_command web route can write garbage steps into mission files. Avoid or rewire to T:413/414."
+      },
+      {
+        "location": "ugv_rpi/app.py __main__ arm path",
+        "item": "RoArm-M2 arm default pose",
+        "command": "T:144",
+        "risk": "none (unreachable)",
+        "details": "Guarded by module_type == 1; config.yaml has module_type: 0"
+      },
+      {
+        "location": "ugv_rpi/app.py 'test' cmdline",
+        "item": "Fake feedback injection",
+        "command": "T:1003 (local only)",
+        "risk": "none",
+        "details": "Debug stub, never sent over serial"
+      },
+      {
+        "location": "ugv_rpi/base_ctrl.py feedback_data",
+        "item": "T:1003 special-case printer",
+        "command": "-",
+        "risk": "none (inert)",
+        "details": "Firmware never sends T:1003; periodic telemetry is T:1001 which flows through the normal path"
+      },
+      {
+        "location": "ESP32 firmware src/web_page.h",
+        "item": "ledCtrl() JS, gimbalCtrl()/gimbalSteady() JS",
+        "command": "T:132, T:134, T:135, T:137",
+        "risk": "none (dead buttons)",
+        "details": "Dead JS in the embedded ESP32 web UI; the dispatcher has no cases for these"
+      },
+      {
+        "location": "ugv_rpi/config.yaml cmd_config",
+        "item": "cmd_pwm_ctrl",
+        "command": "T:11",
+        "risk": "none",
+        "details": "Not referenced by any Python or JS code"
+      },
+      {
+        "location": "ugv_rpi/tutorial_en/, tutorial_cn/",
+        "item": "Standalone teaching copies of base_ctrl.py",
+        "command": "T:0, T:132, T:141, ...",
+        "risk": "none",
+        "details": "Self-contained Jupyter tutorial material with its own config.yaml - intentionally untouched"
+      }
+    ],
+    "live_rpi_to_firmware_commands": [
+      {
+        "T": 1,
+        "source": "base_speed_ctrl / control.js heartbeat / cv timelapse",
+        "firmware": "CMD_UGV_CTRL -> ugvCtrl -> gait direction"
+      },
+      {
+        "T": 112,
+        "source": "control.js function buttons",
+        "firmware": "CMD_BASIC_FUNC (stayLow/handshake/jump/steady)"
+      },
+      {
+        "T": 133,
+        "source": "gimbal_ctrl / cv track / boot pose",
+        "firmware": "CMD_PT_CTRL -> body pitch/yaw pose"
+      },
+      {
+        "T": 201,
+        "source": "rgb_light / cv indicators / control.js presets",
+        "firmware": "CMD_SET_COLOR"
+      },
+      {
+        "T": 202,
+        "source": "base_oled (IP/status display)",
+        "firmware": "CMD_DISPLAY_SINGLE"
+      },
+      {
+        "T": "any",
+        "source": "websocket /json passthrough",
+        "firmware": "Full dispatcher reachable from upper-computer JSON console"
+      }
+    ]
+  }
+}

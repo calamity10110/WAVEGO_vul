@@ -1,0 +1,851 @@
+# import base_ctrl library
+from base_ctrl import BaseController, NullBaseController
+import threading
+import sys
+import yaml, os
+
+# raspberry pi version check.
+def is_raspberry_pi5():
+    try:
+        with open('/proc/cpuinfo', 'r') as file:
+            for line in file:
+                if 'Model' in line:
+                    if 'Raspberry Pi 5' in line:
+                        return True
+                    else:
+                        return False
+    except OSError:
+        return False
+    return False
+
+NO_BASE = '--no-base' in sys.argv
+
+if NO_BASE:
+    print('running without ESP32 (--no-base): all robot commands are no-ops')
+    base = NullBaseController()
+else:
+    try:
+        if is_raspberry_pi5():
+            base = BaseController('/dev/ttyAMA0', 115200)
+        else:
+            base = BaseController('/dev/serial0', 115200)
+    except Exception as e:
+        print(f"serial open failed ({e}) — running disconnected")
+        base = NullBaseController()
+
+threading.Thread(target=lambda: base.breath_light(15), daemon=True).start()
+
+# last movement-command timestamp, consumed by /api/status and the failsafe daemon
+MOTION = {'t': None}
+
+
+def _note_motion(t):
+    MOTION['t'] = t
+
+
+base.motion_hook = _note_motion
+
+# config file.
+curpath = os.path.realpath(__file__)
+thisPath = os.path.dirname(curpath)
+with open(thisPath + '/config.yaml', 'r') as yaml_file:
+    f = yaml.safe_load(yaml_file)
+
+base.base_oled(0, f["base_config"]["robot_name"])
+base.base_oled(1, f"sbc_version: {f['base_config']['sbc_version']}")
+base.base_oled(2, f"{f['base_config']['main_type']}{f['base_config']['module_type']}")
+base.base_oled(3, "Starting...")
+
+
+# Import necessary modules
+from flask import Flask, render_template, Response, request, jsonify, redirect, url_for, send_from_directory, send_file
+from flask_socketio import SocketIO, emit
+from aiortc import RTCPeerConnection, RTCSessionDescription
+import json
+import uuid
+import asyncio
+import time
+import logging
+import cv_ctrl
+import os_info
+from settings_api import get_settings, validate_patch, apply_patch
+from collections import deque
+
+# Get system info
+si = os_info.SystemInfo()
+
+# Create a Flask app instance
+app = Flask(__name__)
+# log = logging.getLogger('werkzeug')
+# log.disabled = True
+socketio = SocketIO(app)
+
+# Set to keep track of RTCPeerConnection instances
+active_pcs = {}
+
+# Maximum number of active connections allowed
+MAX_CONNECTIONS = 1
+
+# Set to keep track of RTCPeerConnection instances
+pcs = set()
+
+# Camera funcs
+cvf = cv_ctrl.OpencvFuncs(thisPath, base)
+
+cmd_actions = {
+    f['code']['zoom_x1']: lambda: cvf.scale_ctrl(1),
+    f['code']['zoom_x2']: lambda: cvf.scale_ctrl(2),
+    f['code']['zoom_x4']: lambda: cvf.scale_ctrl(4),
+
+    f['code']['pic_cap']: cvf.picture_capture,
+    f['code']['vid_sta']: lambda: cvf.video_record(True),
+    f['code']['vid_end']: lambda: cvf.video_record(False),
+
+    f['code']['cv_none']: lambda: cvf.set_cv_mode(f['code']['cv_none']),
+    f['code']['cv_moti']: lambda: cvf.set_cv_mode(f['code']['cv_moti']),
+    f['code']['cv_face']: lambda: cvf.set_cv_mode(f['code']['cv_face']),
+    f['code']['cv_objs']: lambda: cvf.set_cv_mode(f['code']['cv_objs']),
+    f['code']['cv_clor']: lambda: cvf.set_cv_mode(f['code']['cv_clor']),
+    f['code']['mp_hand']: lambda: cvf.set_cv_mode(f['code']['mp_hand']),
+    # [WAVEGO Pro] disabled: line-follow needs T:13 (unsupported)
+    # f['code']['cv_auto']: lambda: cvf.set_cv_mode(f['code']['cv_auto']),
+    f['code']['mp_face']: lambda: cvf.set_cv_mode(f['code']['mp_face']),
+    f['code']['mp_pose']: lambda: cvf.set_cv_mode(f['code']['mp_pose']),
+
+    f['code']['re_none']: lambda: cvf.set_detection_reaction(f['code']['re_none']),
+    f['code']['re_capt']: lambda: cvf.set_detection_reaction(f['code']['re_capt']),
+    f['code']['re_reco']: lambda: cvf.set_detection_reaction(f['code']['re_reco']),
+
+    f['code']['mc_lock']: lambda: cvf.set_movtion_lock(True),
+    f['code']['mc_unlo']: lambda: cvf.set_movtion_lock(False),
+
+    f['code']['led_off']: lambda: cvf.head_light_ctrl(0),
+    f['code']['led_aut']: lambda: cvf.head_light_ctrl(1),
+    f['code']['led_ton']: lambda: cvf.head_light_ctrl(2),
+    f['code']['head_ct']: lambda: cvf.head_light_ctrl(3)
+}
+
+if 'cv_person' in f['code']:
+    cmd_actions[f['code']['cv_person']] = lambda: cvf.set_cv_mode(f['code']['cv_person'])
+if 'cv_line' in f['code']:
+    cmd_actions[f['code']['cv_line']] = lambda: cvf.set_cv_mode(f['code']['cv_line'])
+
+CV_MODE_NAMES = {
+    'none': 'cv_none', 'motion': 'cv_moti', 'face': 'cv_face',
+    'objects': 'cv_objs', 'person': 'cv_person', 'color': 'cv_clor',
+    'hand': 'mp_hand', 'auto': 'cv_auto', 'mp_face': 'mp_face', 'mp_pose': 'mp_pose',
+}
+
+cmd_feedback_actions = [f['code']['cv_none'], f['code']['cv_moti'],
+                        f['code']['cv_face'], f['code']['cv_objs'],
+                        f['code']['cv_clor'], f['code']['mp_hand'],
+                        f['code']['mp_face'],
+                        f['code']['mp_pose'], f['code']['re_none'],
+                        f['code']['re_capt'], f['code']['re_reco'],
+                        f['code']['mc_lock'], f['code']['mc_unlo'],
+                        f['code']['led_off'], f['code']['led_aut'],
+                        f['code']['led_ton'], f['code']['head_ct']
+                        ]
+if 'cv_auto' in f['code']:
+    cmd_feedback_actions.append(f['code']['cv_auto'])
+
+if 'cv_person' in f['code']:
+    cmd_feedback_actions.append(f['code']['cv_person'])
+if 'cv_line' in f['code']:
+    cmd_feedback_actions.append(f['code']['cv_line'])
+
+# Function to generate video frames from the camera
+def generate_frames():
+    while True:
+        frame = cvf.frame_process()
+        # print(cvf.cv_info())
+        try:
+            yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n') 
+        except Exception as e:
+            print("An [generate_frames] error occurred:", e)
+
+
+
+
+
+
+# Route to render the HTML template
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/config')
+def get_config():
+    with open(thisPath + '/config.yaml', 'r') as file:
+        yaml_content = file.read()
+    return yaml_content
+
+# get pictures and videos.
+@app.route('/<path:filename>')
+def serve_static(filename):
+    return send_from_directory('templates', filename)
+
+@app.route('/get_photo_names')
+def get_photo_names():
+    photo_files = sorted(os.listdir(thisPath + '/templates/pictures'), key=lambda x: os.path.getmtime(os.path.join(thisPath + '/templates/pictures', x)), reverse=True)
+    return jsonify(photo_files)
+
+def _safe_media_path(folder, filename, exts):
+    """Resolve a client-supplied media filename to a safe path inside folder.
+
+    Rejects path traversal (../), absolute paths, and wrong extensions.
+    Returns the real path, or None if the request is not allowed.
+    """
+    name = os.path.basename(filename or '')
+    if not name or os.path.splitext(name)[1].lower() not in exts:
+        return None
+    folder_real = os.path.realpath(folder)
+    path = os.path.realpath(os.path.join(folder_real, name))
+    if not path.startswith(folder_real + os.sep):
+        return None
+    return path
+
+
+@app.route('/delete_photo', methods=['POST'])
+def delete_photo():
+    path = _safe_media_path(thisPath + '/templates/pictures', request.form.get('filename'), {'.jpg', '.jpeg', '.png'})
+    if path is None:
+        return jsonify(success=False, error='invalid filename'), 400
+    try:
+        os.remove(path)
+        return jsonify(success=True)
+    except Exception as e:
+        print(e)
+        return jsonify(success=False), 500
+
+@app.route('/videos/<path:filename>')
+def videos(filename):
+    return send_from_directory(thisPath + '/templates/videos', filename)
+
+@app.route('/get_video_names')
+def get_video_names():
+    video_files = sorted(
+        [filename for filename in os.listdir(thisPath + '/templates/videos/') if filename.endswith('.mp4')],
+        key=lambda filename: os.path.getctime(os.path.join(thisPath + '/templates/videos/', filename)),
+        reverse=True
+    )
+    return jsonify(video_files)
+
+@app.route('/delete_video', methods=['POST'])
+def delete_video():
+    path = _safe_media_path(thisPath + '/templates/videos', request.form.get('filename'), {'.mp4'})
+    if path is None:
+        return jsonify(success=False, error='invalid filename'), 400
+    try:
+        os.remove(path)
+        return jsonify(success=True)
+    except Exception as e:
+        print(e)
+        return jsonify(success=False), 500
+
+
+
+
+# Video WebRTC
+# Function to manage connections
+def manage_connections(pc_id):
+    if len(active_pcs) >= MAX_CONNECTIONS:
+        # If maximum connections reached, terminate the oldest connection
+        oldest_pc_id = next(iter(active_pcs))
+        old_pc = active_pcs.pop(oldest_pc_id)
+        old_pc.close()
+
+    # Add new connection to active connections
+    active_pcs[pc_id] = pc
+
+# Asynchronous function to handle offer exchange
+async def offer_async():
+    params = await request.json
+    offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
+
+    # Create an RTCPeerConnection instance
+    pc = RTCPeerConnection()
+
+    # Generate a unique ID for the RTCPeerConnection
+    pc_id = "PeerConnection(%s)" % uuid.uuid4()
+    pc_id = pc_id[:8]
+
+    # Manage connections
+    manage_connections(pc_id)
+
+    # Create and set the local description
+    await pc.createOffer(offer)
+    await pc.setLocalDescription(offer)
+
+    # Prepare the response data with local SDP and type
+    response_data = {"sdp": pc.localDescription.sdp, "type": pc.localDescription.type}
+
+    return jsonify(response_data)
+
+# Wrapper function for running the asynchronous offer function
+def offer():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    future = asyncio.run_coroutine_threadsafe(offer_async(), loop)
+    return future.result()
+
+# set product version
+def set_version(input_main, input_module):
+    # # [WAVEGO Pro] disabled: other-product / wheel-vehicle code
+    # if input_main == 1:
+    # cvf.info_update("RaspRover", (0,255,255), 0.36)
+    if input_main == 2:
+        cvf.info_update("UGV Rover", (0,255,255), 0.36)
+    # # [WAVEGO Pro] disabled: other-product / wheel-vehicle code
+    # elif input_main == 3:
+    # cvf.info_update("UGV Beast", (0,255,255), 0.36)
+    if input_module == 0:
+        cvf.info_update("No Module", (0,255,255), 0.36)
+    elif input_module == 1:
+        cvf.info_update("ARM", (0,255,255), 0.36)
+    elif input_module == 2:
+        cvf.info_update("PT", (0,255,255), 0.36)
+
+def _cmd_base(args):
+    # base -c {"T":1,"L":0.5,"R":0.5}
+    if len(args) < 2:
+        return
+    if args[1] == '-c' or args[1] == '--cmd':
+        if len(args) < 3:
+            return
+        base.base_json_ctrl(json.loads(args[2]))
+    elif args[1] == '-r' or args[1] == '--recv':
+        if len(args) < 3:
+            return
+        if args[2] == 'on':
+            cvf.show_recv_info(True)
+        else:
+            cvf.show_recv_info(False)
+
+
+def _cmd_send(args):
+    if len(args) < 2:
+        return
+    if args[1] == '-a' or args[1] == '--add':
+        if len(args) < 3:
+            return
+        if args[2] == '-b' or args[2] == '--broadcast':
+            base.base_json_ctrl({"T":303,"mac":"FF:FF:FF:FF:FF:FF"})
+        else:
+            base.base_json_ctrl({"T":303,"mac":args[2]})
+    elif args[1] == '-rm' or args[1] == '--remove':
+        if len(args) < 3:
+            return
+        if args[2] == '-b' or args[2] == '--broadcast':
+            base.base_json_ctrl({"T":304,"mac":"FF:FF:FF:FF:FF:FF"})
+        else:
+            base.base_json_ctrl({"T":304,"mac":args[2]})
+    elif args[1] == '-b' or args[1] == '--broadcast':
+        base.base_json_ctrl({"T":306,"mac":"FF:FF:FF:FF:FF:FF","dev":0,"b":0,"s":0,"e":0,"h":0,"cmd":3,"megs":' '.join(args[2:])})
+    elif args[1] == '-g' or args[1] == '--group':
+        base.base_json_ctrl({"T":305,"dev":0,"b":0,"s":0,"e":0,"h":0,"cmd":3,"megs":' '.join(args[2:])})
+    else:
+        base.base_json_ctrl({"T":306,"mac":args[1],"dev":0,"b":0,"s":0,"e":0,"h":0,"cmd":3,"megs":' '.join(args[2:])})
+
+
+def _cmd_cv(args):
+    if len(args) < 2:
+        return
+    if args[1] == '-r' or args[1] == '--range':
+        if len(args) < 4:
+            return
+        try:
+            lower_trimmed = args[2].strip("[]")
+            lower_nums = [int(lower_num) for lower_num in lower_trimmed.split(",")]
+            if all(0 <= num <= 255 for num in lower_nums):
+                pass
+            else:
+                return
+        except:
+            return
+        try:
+            upper_trimmed = args[3].strip("[]")
+            upper_nums = [int(upper_num) for upper_num in upper_trimmed.split(",")]
+            if all(0 <= num <= 255 for num in upper_nums):
+                pass
+            else:
+                return
+        except:
+            return
+        cvf.change_target_color(lower_nums, upper_nums)
+    elif args[1] == '-s' or args[1] == '--select':
+        if len(args) < 3:
+            return
+        cvf.selet_target_color(args[2])
+
+
+def _cmd_video(args):
+    if len(args) < 3:
+        return
+    if args[1] == '-q' or args[1] == '--quality':
+        try:
+            int(args[2])
+        except:
+            return
+        cvf.set_video_quality(int(args[2]))
+
+
+# # [WAVEGO Pro] disabled: other-product / wheel-vehicle code - line-follow pipeline
+# elif args[0] == 'line':
+# if args[1] == '-r' or args[1] == '--range':
+# try:
+# lower_trimmed = args[2].strip("[]")
+# lower_nums = [int(lower_num) for lower_num in lower_trimmed.split(",")]
+# if all(0 <= num <= 255 for num in lower_nums):
+# pass
+# else:
+# return
+# except:
+# return
+# try:
+# upper_trimmed = args[3].strip("[]")
+# upper_nums = [int(upper_num) for upper_num in upper_trimmed.split(",")]
+# if all(0 <= num <= 255 for num in upper_nums):
+# pass
+# else:
+# return
+# except:
+# return
+# cvf.change_line_color(lower_nums, upper_nums)
+# elif args[1] == '-s' or args[1] == '--set':
+# if len(args) != 9:
+# return
+# try:
+# for i in range(2,9):
+# float(args[i])
+# except:
+# return
+# # line -s 0.7 0.8 1.6 0.0006 0.6 0.4 0.2
+# cvf.set_line_track_args(float(args[2]), float(args[3]), float(args[4]), float(args[5]), float(args[6]), float(args[7]), float(args[8]))
+#
+def _cmd_track(args):
+    if len(args) < 3:
+        return
+    cvf.set_pt_track_args(args[1], args[2])
+
+
+def _cmd_timelapse(args):
+    if len(args) < 2:
+        return
+    if args[1] == '-s' or args[1] == '--start':
+        if len(args) != 6:
+            return
+        try:
+            move_speed = float(args[2])
+            move_time  = float(args[3])
+            t_interval = float(args[4])
+            loop_times = int(args[5])
+        except:
+            return
+        cvf.timelapse(move_speed, move_time, t_interval, loop_times)
+    elif args[1] == '-e' or args[1] == '--end' or args[1] == '--stop':
+        cvf.mission_stop()
+
+
+# # [WAVEGO Pro] disabled: other-product / wheel-vehicle code (RaspRover / UGV Beast version text)
+# elif args[0] == 'p':
+# main_type = int(args[1][0])
+# module_type = int(args[1][1])
+# set_version(main_type, module_type)
+#
+# # s 20
+def _cmd_s(args):
+    if len(args) < 2:
+        return
+    main_type = int(args[1][0])
+    module_type = int(args[1][1])
+    # # [WAVEGO Pro] disabled: other-product / wheel-vehicle code
+    # if main_type == 1:
+    # f['base_config']['robot_name'] = "RaspRover"
+    # f['args_config']['max_speed'] = 0.65
+    # f['args_config']['slow_speed'] = 0.3
+    if main_type == 2:
+        f['base_config']['robot_name'] = "UGV Rover"
+        f['args_config']['max_speed'] = 1.3
+        f['args_config']['slow_speed'] = 0.2
+    # # [WAVEGO Pro] disabled: other-product / wheel-vehicle code
+    # elif main_type == 3:
+    # f['base_config']['robot_name'] = "UGV Beast"
+    # f['args_config']['max_speed'] = 1.0
+    # f['args_config']['slow_speed'] = 0.2
+    f['base_config']['main_type'] = main_type
+    f['base_config']['module_type'] = module_type
+    with open(thisPath + '/config.yaml', "w") as yaml_file:
+        yaml.dump(f, yaml_file)
+    set_version(main_type, module_type)
+
+
+def _cmd_test(args):
+    cvf.update_base_data({"T":1003,"mac":1111,"megs":"helllo aaaaaaaa"})
+
+
+_CMD_DISPATCH = {
+    "base": _cmd_base,
+    "send": _cmd_send,
+    "cv": _cmd_cv,
+    "video": _cmd_video,
+    "v": _cmd_video,
+    "track": _cmd_track,
+    "timelapse": _cmd_timelapse,
+    "s": _cmd_s,
+    "test": _cmd_test,
+}
+
+
+# main cmdline for robot ctrl
+def cmdline_ctrl(args_string):
+    args = (args_string or "").split()
+    if not args:
+        return
+    handler = _CMD_DISPATCH.get(args[0])
+    if handler:
+        handler(args)
+
+
+# Route to handle the offer request
+@app.route('/offer', methods=['POST'])
+def offer_route():
+    return offer()
+
+# Route to stream video frames
+@app.route('/video_feed')
+def video_feed():
+    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/send_command', methods=['POST'])
+def handle_command():
+    command = request.form['command']
+    print("Received command:", command)
+    cvf.info_update("CMD:" + command, (0,255,255), 0.36)
+    try:
+        cmdline_ctrl(command)
+    except Exception as e:
+        print(f"[app.handle_command] error: {e}")
+        return jsonify(success=False, error=str(e)), 500
+    return jsonify(success=True)
+
+# control bypass API: raw JSON passthrough for external applications
+@app.route('/api/cmd', methods=['POST'])
+def api_cmd():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or 'T' not in data:
+        return jsonify(success=False, error='JSON object body with integer field "T" required'), 400
+    sync_ms = min(request.args.get('sync_ms', default=0, type=int), 3000)
+    base.base_json_ctrl(data)
+    response = None
+    if sync_ms > 0 and isinstance(data['T'], int):
+        expected_t = -data['T']
+        deadline = time.time() + sync_ms / 1000.0
+        while time.time() < deadline:
+            bd = base.base_data if isinstance(base.base_data, dict) else {}
+            if bd.get('T') == expected_t:
+                response = bd
+                break
+            time.sleep(0.02)
+    return jsonify(success=True, sent=data, response=response)
+
+@app.route('/api/status')
+def api_status():
+    base_data = base.base_data if isinstance(base.base_data, dict) else {}
+    motion_age = round(time.time() - MOTION['t'], 1) if MOTION['t'] else None
+    status = {
+        'robot_name': f['base_config']['robot_name'],
+        'motion': {'last_move_s_ago': motion_age},
+        'esp32': {
+            'battery_voltage': base_data.get('v'),
+            'raw_feedback': base_data,
+        },
+        'rpi': {
+            'cpu_load': si.cpu_load,
+            'cpu_temp': si.cpu_temp,
+            'ram_usage': si.ram,
+            'wifi_rssi': si.wifi_rssi,
+        },
+        'video': {
+            'fps': cvf.video_fps,
+            'mjpeg_url': '/video_feed',
+            'webrtc_offer_url': '/offer',
+        },
+        'cv': {
+            'mode': cvf.cv_mode,
+            'motion_lock': cvf.cv_movtion_lock,
+            'pan_angle': cvf.pan_angle,
+            'tilt_angle': cvf.tilt_angle,
+        },
+    }
+    return jsonify(status)
+
+
+@app.route('/api/cv', methods=['GET', 'POST'])
+def api_cv():
+    if request.method == 'GET':
+        mode_name = None
+        for name, key in CV_MODE_NAMES.items():
+            if f['code'].get(key) == cvf.cv_mode:
+                mode_name = name
+                break
+        return jsonify(mode=mode_name, mode_code=cvf.cv_mode,
+                       motion_lock=cvf.cv_movtion_lock)
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify(success=False, error='JSON object body required'), 400
+    changed = {}
+    if 'mode' in data:
+        mode_key = CV_MODE_NAMES.get(str(data['mode']).lower())
+        if mode_key is None or mode_key not in f['code']:
+            return jsonify(success=False,
+                           error='unknown mode "{}", valid: {}'.format(data['mode'], sorted(CV_MODE_NAMES))), 400
+        cvf.set_cv_mode(f['code'][mode_key])
+        changed['mode'] = data['mode']
+    if 'motion_lock' in data:
+        cvf.set_movtion_lock(bool(data['motion_lock']))
+        changed['motion_lock'] = bool(data['motion_lock'])
+    return jsonify(success=True, **changed,
+                   mode=cvf.cv_mode, motion_lock=cvf.cv_movtion_lock)
+
+
+VLM_SERVICE = "http://127.0.0.1:5001"
+
+
+def _vlm_proxy(path, payload=None):
+    import requests as _rq
+    try:
+        if payload is None:
+            r = _rq.get(VLM_SERVICE + path, timeout=3)
+        else:
+            r = _rq.post(VLM_SERVICE + path, json=payload, timeout=5)
+        return (r.json(), r.status_code)
+    except Exception:
+        return {"success": False, "error": "vlm service not running"}, 503
+
+
+@app.route('/api/vlm', methods=['GET', 'POST'])
+def api_vlm():
+    if request.method == 'GET':
+        body, code = _vlm_proxy('/api/vlm')
+        return jsonify(body), code
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or not (data.get('goal') or data.get('goals')):
+        return jsonify(success=False, error='goal or goals required'), 400
+    body, code = _vlm_proxy('/api/vlm', data)
+    return jsonify(body), code
+
+
+@app.route('/api/vlm/stop', methods=['POST'])
+def api_vlm_stop():
+    body, code = _vlm_proxy('/api/vlm/stop', {})
+    return jsonify(body), code
+
+
+@app.route('/api/config', methods=['GET', 'POST'])
+def api_config():
+    if request.method == 'GET':
+        return jsonify(success=True, settings=get_settings(f))
+    data = request.get_json(silent=True)
+    clean, errors = validate_patch(data if isinstance(data, dict) else {})
+    if errors:
+        return jsonify(success=False, error='; '.join(errors)), 400
+    apply_patch(f, clean)
+    try:
+        with open(thisPath + '/config.yaml', "w") as yaml_file:
+            yaml.dump(f, yaml_file)
+    except Exception as e:
+        return jsonify(success=False, error=f"persist failed: {e}"), 500
+    return jsonify(success=True, applied=clean,
+                   note="speeds/name apply on next page load; video resolution after camera restart")
+
+
+# telemetry: bounded host-error ring + polled joint positions
+ERROR_RING = deque(maxlen=100)
+
+
+def note_error(source, msg, level='ERROR'):
+    ERROR_RING.appendleft({'t': round(time.time(), 3), 'source': source,
+                           'level': level, 'msg': str(msg)[:300]})
+
+
+class RingLogHandler(logging.Handler):
+    def emit(self, record):
+        if record.levelno >= logging.WARNING:
+            note_error(record.name, record.getMessage(), record.levelname)
+
+
+logging.getLogger().addHandler(RingLogHandler())
+
+from werkzeug.exceptions import HTTPException
+
+
+@app.errorhandler(HTTPException)
+def on_http_exception(e):
+    return jsonify(success=False, error=e.description), e.code
+
+
+@app.errorhandler(Exception)
+def on_exception(e):
+    note_error('flask', e)
+    return jsonify(success=False, error=str(e)), 500
+
+
+JOINTS = {'fb': None, 't': 0.0}
+
+
+def joint_poll_loop():
+    while True:
+        try:
+            base.base_json_ctrl({'T': 106})
+            deadline = time.time() + 0.5
+            while time.time() < deadline:
+                bd = base.base_data if isinstance(base.base_data, dict) else {}
+                if bd.get('T') == -106:
+                    JOINTS['fb'] = bd.get('fb')
+                    JOINTS['t'] = time.time()
+                    break
+            time.sleep(1.0)
+        except Exception as e:
+            note_error('joint_poll', e)
+            time.sleep(2.0)
+
+
+@app.route('/api/telemetry')
+def api_telemetry():
+    base_data = base.base_data if isinstance(base.base_data, dict) else {}
+    return jsonify(
+        joints=JOINTS,
+        battery=base_data.get('v'),
+        esp32_last=base_data,
+        rpi={'cpu_load': si.cpu_load, 'cpu_temp': si.cpu_temp,
+             'ram_usage': si.ram, 'wifi_rssi': si.wifi_rssi},
+        video_fps=cvf.video_fps,
+        cv={'mode': cvf.cv_mode, 'motion_lock': cvf.cv_movtion_lock},
+        errors=list(ERROR_RING)[:50],
+    )
+
+
+
+# Web socket
+@socketio.on('json', namespace='/json')
+def handle_socket_json(json):
+    try:
+        base.base_json_ctrl(json)
+    except Exception as e:
+        print("Error handling JSON data:", e)
+        return
+
+# info update single
+def update_data_websocket_single():
+    # {'T':1001,'L':0,'R':0,'r':0,'p':0,'v': 11,'pan':0,'tilt':0}
+    try:
+        socket_data = {
+            f['fb']['picture_size']:si.pictures_size,
+            f['fb']['video_size']:  si.videos_size,
+            f['fb']['cpu_load']:    si.cpu_load,
+            f['fb']['cpu_temp']:    si.cpu_temp,
+            f['fb']['ram_usage']:   si.ram,
+            f['fb']['wifi_rssi']:   si.wifi_rssi,
+
+            f['fb']['led_mode']:    cvf.cv_light_mode,
+            f['fb']['detect_type']: cvf.cv_mode,
+            f['fb']['detect_react']:cvf.detection_reaction_mode,
+            f['fb']['pan_angle']:   cvf.pan_angle,
+            f['fb']['tilt_angle']:  cvf.tilt_angle,
+            f['fb']['base_voltage']:base.base_data['v'],
+            f['fb']['video_fps']:   cvf.video_fps,
+            f['fb']['cv_movtion_mode']: cvf.cv_movtion_lock
+        }
+        socketio.emit('update', socket_data, namespace='/ctrl')
+    except Exception as e:
+        print("An [app.update_data_websocket_single] error occurred:", e)
+
+# info feedback
+def update_data_loop():
+    base.base_oled(2, "F/J:5000/8888")
+    start_time = time.time()
+    time.sleep(1)
+    while 1:
+        update_data_websocket_single()
+        eth0 = si.eth0_ip
+        wlan = si.wlan_ip
+        if eth0:
+            base.base_oled(0, f"E:{eth0}")
+        else:
+            base.base_oled(0, f"E: No Ethernet")
+        if wlan:
+            base.base_oled(1, f"W:{wlan}")
+        else:
+            base.base_oled(1, f"W: NO {si.net_interface}")
+        elapsed_time = time.time() - start_time
+        hours = int(elapsed_time // 3600)
+        minutes = int((elapsed_time % 3600) // 60)
+        seconds = int(elapsed_time % 60)
+        base.base_oled(3, f"{si.wifi_mode} {hours:02d}:{minutes:02d}:{seconds:02d} {si.wifi_rssi}dBm")
+        time.sleep(5)
+
+def base_data_loop():
+    sensor_interval = 1
+    sensor_read_time = time.time()
+    while True:
+        cvf.update_base_data(base.feedback_data())
+
+        # get sensor data
+        if base.extra_sensor:
+            if time.time() - sensor_read_time > sensor_interval:
+                base.rl.read_sensor_data()
+                sensor_read_time = time.time()
+        
+        # get lidar data
+        if base.use_lidar:
+            base.rl.lidar_data_recv()
+        
+        time.sleep(0.025)
+
+@socketio.on('message', namespace='/ctrl')
+def handle_socket_cmd(message):
+    try:
+        json_data = json.loads(message)
+    except json.JSONDecodeError:
+        print("Error decoding JSON.[app.handle_socket_cmd]")
+        return
+    cmd_a = float(json_data.get("A", 0))
+    if cmd_a in cmd_actions:
+        cmd_actions[cmd_a]()
+    else:
+        pass
+    if cmd_a in cmd_feedback_actions:
+        threading.Thread(target=update_data_websocket_single, daemon=True).start()
+
+
+
+# Run the Flask app
+if __name__ == "__main__":
+    # update the size of videos and pictures
+    si.update_folder(thisPath)
+
+    # pt/arm looks forward
+    # # [WAVEGO Pro] disabled: other-product / wheel-vehicle code (no arm module on this build)
+    # base.base_json_ctrl({"T":f['cmd_config']['cmd_arm_ctrl_ui'],"E":f['args_config']['arm_default_e'],"Z":f['args_config']['arm_default_z'],"R":f['args_config']['arm_default_r']})
+    # else: (arm module builds only)
+    base.gimbal_ctrl(0, 0, 200, 10)
+
+    # feedback loop starts
+    si.start()
+    si.resume()
+    data_update_thread = threading.Thread(target=update_data_loop, daemon=True)
+    data_update_thread.start()
+
+    # base data update
+    base_update_thread = threading.Thread(target=base_data_loop, daemon=True)
+    base_update_thread.start()
+
+    # joint position polling for the telemetry tab
+    joint_thread = threading.Thread(target=joint_poll_loop, daemon=True)
+    joint_thread.start()
+
+    # run the main web app
+    socketio.run(app, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)
