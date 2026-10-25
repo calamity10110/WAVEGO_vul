@@ -133,6 +133,9 @@ jobs:
             0xe000  wavego-esp32-${VERSION}-boot_app0.bin \\
             0x10000 wavego-esp32-${VERSION}-firmware.bin
           EOF
+          # one checksum file for every esp32 asset (incl. merged.bin);
+          # verify with: sha256sum -c wavego-esp32-${VERSION}-SHA256SUMS.txt
+          (cd "${OUT}" && sha256sum wavego-esp32-${VERSION}-* > "wavego-esp32-${VERSION}-SHA256SUMS.txt")
           ls -la "${OUT}"
 
       - uses: actions/upload-artifact@v4
