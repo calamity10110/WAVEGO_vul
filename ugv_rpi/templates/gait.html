@@ -80,6 +80,44 @@
     </section>
 
     <section>
+        <h2>Gait Engine (T:117)</h2>
+        <div class="param">
+            <label>mode
+                <select id="e_mode" style="width:100%">
+                    <option value="0" selected>0 — crawl (statically stable)</option>
+                    <option value="1">1 — walk (stock diagonal)</option>
+                    <option value="2">2 — run (fast trot, capped 0.8)</option>
+                </select>
+            </label>
+        </div>
+        <div class="param">
+            <label>speed <span class="val" id="v_e_speed">0.5</span></label>
+            <input type="range" id="p_e_speed" min="0.05" max="1" step="0.05" value="0.5">
+        </div>
+        <div class="param">
+            <label>heading deg (+left / −right) <span class="val" id="v_e_heading">0</span></label>
+            <input type="range" id="p_e_heading" min="-180" max="180" step="5" value="0">
+        </div>
+        <div class="param">
+            <label>height mm <span class="val" id="v_e_height">95</span></label>
+            <input type="range" id="p_e_height" min="75" max="110" step="1" value="95">
+        </div>
+        <div class="param">
+            <label>stride mm (0 = mode default) <span class="val" id="v_e_stride">0</span></label>
+            <input type="range" id="p_e_stride" min="0" max="40" step="1" value="0">
+        </div>
+        <div class="param">
+            <label>distance mm (0 = until stopped) </label>
+            <input type="number" id="e_distance" min="0" max="10000" step="10" value="0">
+        </div>
+        <div class="row">
+            <button id="engineStart" class="primary">Start Engine (T:117)</button>
+            <button id="engineStop" class="danger">Stop (T:111)</button>
+        </div>
+        <p class="note">Parametric gait: mode sets duty/stride/cadence envelopes, speed scales within them, distance auto-stops at the target (completion event <code>{"T":-117,...}</code> on the serial console). T:111 / any pad or pose command takes control back.</p>
+    </section>
+
+    <section>
         <h2>Body &amp; Calibration</h2>
         <div class="row">
             <button id="btnStand">Stand (T:110)</button>
@@ -208,6 +246,25 @@
     bindRange('p_delay', 'v_delay');
     bindRange('p_iter', 'v_iter', function (v) { return parseFloat(v).toFixed(3); });
     bindRange('p_height', 'v_height');
+    bindRange('p_e_speed', 'v_e_speed', function (v) { return parseFloat(v).toFixed(2); });
+    bindRange('p_e_heading', 'v_e_heading');
+    bindRange('p_e_height', 'v_e_height');
+    bindRange('p_e_stride', 'v_e_stride');
+
+    document.getElementById('engineStart').addEventListener('click', function () {
+        sendEsp({
+            T: 117,
+            mode: parseInt(document.getElementById('e_mode').value, 10),
+            speed: parseFloat(document.getElementById('p_e_speed').value),
+            heading: parseInt(document.getElementById('p_e_heading').value, 10),
+            height: parseFloat(document.getElementById('p_e_height').value),
+            stride: parseFloat(document.getElementById('p_e_stride').value),
+            distance: parseFloat(document.getElementById('e_distance').value)
+        });
+    });
+    document.getElementById('engineStop').addEventListener('click', function () {
+        sendEsp({ T: 111, FB: 0, LR: 0 });
+    });
 
     document.getElementById('applyInterp').addEventListener('click', function () {
         sendEsp({ T: 115, delay: parseInt(document.getElementById('p_delay').value, 10), iterate: parseFloat(document.getElementById('p_iter').value) });
