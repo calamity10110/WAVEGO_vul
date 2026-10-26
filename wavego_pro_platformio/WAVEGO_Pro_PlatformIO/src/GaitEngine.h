@@ -68,6 +68,15 @@ public:
     // speed > 0 (or when already active — live update).
     void  configure(const Params& p);
 
+    // Last merged params — the protocol layer seeds a partial T:117 from
+    // these so absent fields keep their value.
+    const Params& lastParams() const { return last_; }
+
+    // Re-anchor the eased height to physical reality (call from the
+    // wrapper when starting the engine, so easing begins from the live
+    // WALK_HEIGHT instead of a stale default).
+    void  syncHeightNow(float mm);
+
     // Planner step. Only valid while active(); advances phase, integrates
     // distance at cycle boundaries, eases height toward target.
     Tick  tick();
@@ -113,6 +122,7 @@ private:
     float    traveledMm_ = 0.0f;
     uint32_t cycles_ = 0;
     bool     doneLatched_ = false;
+    Params   last_;                   // sane defaults, filled by ctor
 };
 
 } // namespace gait

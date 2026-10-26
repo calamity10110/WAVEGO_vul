@@ -351,6 +351,22 @@ static void cmdSetGaitParams(const JsonDocument& c){
                          c["extendedZ"],
                          c["sideMax"],
                          c["massAdjust"]);
+  // live bounds changed: re-clamp the engine against them (if running)
+  if (bodyCtrl.engineActive()) {
+    bodyCtrl.configureEngine(bodyCtrl.engine().lastParams());
+  }
+}
+
+static void cmdGaitEngine(const JsonDocument& c){
+  // partial update: seed from the merged state so absent fields keep value
+  gait::Params p = bodyCtrl.engine().lastParams();
+  if (!c["mode"].isNull())     p.mode     = (gait::Mode)(int)c["mode"];
+  if (!c["speed"].isNull())    p.speed    = (float)(double)c["speed"];
+  if (!c["heading"].isNull())  p.headingDeg = (float)(double)c["heading"];
+  if (!c["height"].isNull())   p.heightMm = (float)(double)c["height"];
+  if (!c["stride"].isNull())   p.strideMm = (float)(double)c["stride"];
+  if (!c["distance"].isNull()) p.distanceMm = (float)(double)c["distance"];
+  bodyCtrl.configureEngine(p);
 }
 
 static void cmdSetColor(const JsonDocument& c){
@@ -536,6 +552,7 @@ static const CmdEntry CMD_TABLE[] = {
   {CMD_STAND_UP_HEIGHT,          cmdStandUpHeight},
   {CMD_SET_INTERPOLATION_PARAMS, cmdSetInterpolationParams},
   {CMD_SET_GAIT_PARAMS,          cmdSetGaitParams},
+  {CMD_GAIT_ENGINE,              cmdGaitEngine},
   {CMD_SET_COLOR,                cmdSetColor},
   {CMD_DISPLAY_SINGLE,           cmdDisplaySingle},
   {CMD_DISPLAY_UPDATE,           cmdDisplayUpdate},
@@ -569,6 +586,14 @@ static const CmdEntry CMD_TABLE[] = {
 
 void jsonCmdReceiveHandler(const JsonDocument& jsonCmdInput){
   const int cmdType = jsonCmdInput["T"].as<int>();
+  // Pose/locomotion commands reclaim control from the gait engine (the
+  // engine is level-based exactly like T:111, so any takeover command
+  // must switch it off first — T:111 FB:0 LR:0 remains THE universal stop).
+  if (cmdType == CMD_UGV_CTRL || cmdType == CMD_BASIC_MOVE ||
+      cmdType == CMD_BASIC_FUNC || cmdType == CMD_STAND_UP ||
+      cmdType == CMD_STAND_UP_HEIGHT || cmdType == CMD_PT_CTRL) {
+    bodyCtrl.engine().stop();
+  }
   for (size_t i = 0; i < sizeof(CMD_TABLE) / sizeof(CMD_TABLE[0]); i++) {
     if (CMD_TABLE[i].type == cmdType) {
       CMD_TABLE[i].handler(jsonCmdInput);
@@ -615,10 +640,25 @@ void loop() {
   if (steadyMode == 1) {
     accXYZUpdate();
     bodyCtrl.balancing(ACC_X, ACC_Y);
+  } else if (bodyCtrl.engineActive()) {
+    bodyCtrl.engineCtrl();
   } else {
     bodyCtrl.robotCtrl();
   }
   wireDebugDetect();
+
+  // one-shot gait-engine distance completion feedback (async, like T:-207)
+  float engineTraveledMm = 0;
+  uint32_t engineCycles = 0;
+  if (bodyCtrl.checkEngineDone(engineTraveledMm, engineCycles)) {
+    jsonFeedback.clear();
+    jsonFeedback["T"] = -117;
+    jsonFeedback["done"] = true;
+    jsonFeedback["traveled"] = engineTraveledMm;
+    jsonFeedback["cycles"] = engineCycles;
+    serializeJson(jsonFeedback, outputString);
+    Serial.println(outputString);
+  }
 
   unsigned long currentMillis = millis();
   if (currentMillis - previousMillisFB >= intervalFB) {

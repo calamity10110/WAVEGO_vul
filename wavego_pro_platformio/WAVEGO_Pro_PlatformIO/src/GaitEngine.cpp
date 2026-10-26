@@ -20,7 +20,14 @@ static const ModeParams MODES[3] = {
     { 0.40f, false, false, 32.0f, 24.0f,  3, 2, 0.02f, 0.03f, 0.8f }, // RUN
 };
 
-Engine::Engine() {}
+Engine::Engine() {
+    last_.mode = WALK;
+    last_.speed = 0.5f;
+    last_.headingDeg = 0.0f;
+    last_.heightMm = 95.0f;
+    last_.strideMm = 0.0f;
+    last_.distanceMm = 0.0f;
+}
 
 const ModeParams& Engine::modeParams(Mode m) {
     return MODES[(m == CRAWL || m == RUN) ? m : WALK];
@@ -95,6 +102,18 @@ void Engine::configure(const Params& p) {
         doneLatched_ = false;
     }
     if (speed_ > 0.0f) active_ = true;
+
+    // publish the merged state for the next partial configure()
+    last_.mode = mode_;
+    last_.speed = speed_;
+    last_.headingDeg = headingDeg_;
+    last_.heightMm = heightTargetMm_;
+    last_.strideMm = strideMm_;
+    last_.distanceMm = distanceTargetMm_;
+}
+
+void Engine::syncHeightNow(float mm) {
+    heightNowMm_ = clampHeight_(mm);
 }
 
 Tick Engine::tick() {

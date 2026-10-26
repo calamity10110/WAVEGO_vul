@@ -98,6 +98,12 @@ static int timeOffset = 50;
 // set gait params
 // {"T":116,"maxHeight":110,"minHeight":75,"height":95,"lift":9,"range":40,"acc":5,"extendedX":16,"extendedZ":25,"sideMax":30,"massAdjust":21}
 #define CMD_SET_GAIT_PARAMS 116
+// parametric gait engine — all fields optional (absent = keep current);
+// mode 0=crawl 1=walk 2=run, speed 0..1 (clamped per mode), heading deg,
+// height mm, stride mm (0 = mode default), distance mm (0 = until stopped)
+// {"T":117,"mode":1,"speed":0.5,"heading":0,"height":95,"stride":0,"distance":0}
+// completion event: {"T":-117,"done":true,"traveled":mm,"cycles":n}
+#define CMD_GAIT_ENGINE 117
 
 
 // id 0 -> left LED

@@ -2,6 +2,7 @@
 #define BODY_CTRL_H
 
 #include <SCServo.h>
+#include "GaitEngine.h"
 
 class BodyCtrl{
 private:
@@ -29,6 +30,8 @@ private:
                                 0, 0, 0, 0, 0, 0, 0, 0,
                                 0, 0, 0, 0, 0, 0, 0, 0,
                                 0, 0, 0, 0, 0, 0, 0, 0};
+    gait::Engine engine_;
+    bool engineDonePending_ = false;
 
 public:
     BodyCtrl() {
@@ -83,9 +86,22 @@ public:
 
     void inputCmd(int fb, int lr);
     void setInterpolationParams(int delayInput, float iterateInput);
-    void setGaitParams(double maxHeight, double minHeight, double height, double lift, 
+    void setGaitParams(double maxHeight, double minHeight, double height, double lift,
             double range, double acc, double extendedX, double extendedZ, double sideMax, double massAdjust);
     void robotCtrl();
+
+    // ---- parametric gait engine (T:117) ----
+    // Applies live-variable bounds (WALK_HEIGHT_MIN/MAX/ACC/LIFT), anchors
+    // height easing to the live WALK_HEIGHT, and zeroes the legacy FB/LR
+    // vector so the two locomotion paths never fight.
+    void configureEngine(const gait::Params& p);
+    bool engineActive() { return engine_.active(); }
+    gait::Engine& engine() { return engine_; }
+    // One engine tick: writes engine cadence/geometry into the live WALK_*
+    // variables and drives the existing gaitTypeCtrl IK path.
+    void engineCtrl();
+    // Poll the one-shot distance-complete event (T:-117 feedback).
+    bool checkEngineDone(float& traveledMm, uint32_t& cycles);
     
     float linearCtrl(float numStart, float numEnd, float rateInput);
     float besselCtrl(float numStart, float numEnd, float rateInput);

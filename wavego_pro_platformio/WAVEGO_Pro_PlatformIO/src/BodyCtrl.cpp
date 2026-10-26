@@ -832,6 +832,60 @@ void BodyCtrl::robotCtrl(){
   }
 }
 
+// ---- parametric gait engine (T:117) ----
+
+void BodyCtrl::configureEngine(const gait::Params& p){
+  // live-variable bounds rule: T:116 changes are picked up here
+  engine_.setBounds(WALK_HEIGHT_MIN, WALK_HEIGHT_MAX, WALK_ACC, WALK_LIFT);
+  if(!engine_.active()){
+    engine_.syncHeightNow(WALK_HEIGHT);   // ease from physical reality
+  }
+  engine_.configure(p);
+  if(engine_.active()){
+    inputCmd(0, 0);   // the engine owns locomotion; the legacy FB/LR
+    STAND_STILL = 0;  // vector must not fight it on the next robotCtrl pass
+  }
+}
+
+void BodyCtrl::engineCtrl(){
+  if(debugMode || funcMode){
+    delay(1);         // never fight the debug/function modes
+    return;
+  }
+  gait::Tick t = engine_.tick();
+  const gait::ModeParams& mp = gait::Engine::modeParams(engine_.mode());
+  // write the engine's cadence + geometry into the live variables the
+  // IK reads (WALK_LIFT_PROP/WALK_HEIGHT/WALK_RANGE are consumed live by
+  // singleGaitCtrl; the boot-time pre-rendered copies like WALK_H_L are
+  // dead code and must stay untouched).
+  WALK_LIFT_PROP = mp.swingProp;
+  WALK_HEIGHT    = t.heightNowMm;
+  WALK_RANGE     = engine_.strideEffMm();
+  STEP_DELAY     = engine_.delayEffMs();
+  STEP_ITERATE   = engine_.iterateEff();
+  GAIT_TYPE      = mp.creepPlan ? 1 : 0;
+  if(t.done){
+    // distance target completed at a clean cycle boundary: latch the
+    // event, let robotCtrl's stand branch take over on the next pass
+    engineDonePending_ = true;
+    STAND_STILL = 0;
+    return;
+  }
+  gaitTypeCtrl(t.phase, t.headingDeg, t.turnCmd);
+  allJointAngle(GoalAngle);
+  delay(STEP_DELAY);
+}
+
+bool BodyCtrl::checkEngineDone(float& traveledMm, uint32_t& cycles){
+  if(!engineDonePending_){
+    return false;
+  }
+  engineDonePending_ = false;
+  traveledMm = engine_.traveledMm();
+  cycles = engine_.cycles();
+  return true;
+}
+
 
 // key frames ctrl.
 // 0 <= rateInput <= 1
