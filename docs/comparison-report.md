@@ -68,14 +68,20 @@ flash-ready bundle with checksums on every push.
 
 ### 1.3 Honest accounting — what the fork does *not* change
 
-- **Gaits are still the firmware's scripted IK tables.** No learned/RL
-  locomotion; the fork's motion work is orchestration, cadence, and safety
-  around the vendor's gait engine.
+- **Locomotion remains analytic IK, not learned.** (Correction to earlier
+  versions of this report: the stock firmware was never a lookup-table
+  walker — it computes closed-form leg IK and analytic foot trajectories.
+  The fork's `GaitEngine` (T:117) extends that foundation with runtime
+  gait styles crawl/walk/run, continuous speed = stride × cadence, eased
+  body height, and distance targeting, all host-side unit-tested.) Still
+  no learned/RL locomotion; gaits are hand-engineered trajectories.
 - **`cv_ctrl.py` remains the worst-health file (1.9/10)** — inherited stock
   code; the fork tests around it rather than rewriting it.
 - **Hardware-verified items still open** (flagged in code, one session on
-  the robot each): lean sign constants, STEP_DELAY cadence bounds, and the
-  approach-turn direction on the physical chassis.
+  the robot each): lean sign constants, STEP_DELAY cadence bounds, the
+  approach-turn direction on the physical chassis, and now the gait
+  engine's crawl/run mode tables (run ships capped at speed 0.8 until
+  measured).
 - **VLM throughput is physics**: ~4–5 tok/s on a Pi 5 CPU means one scene
   decision costs 10–20 s. The change-gate and prompt cache make that
   livable; they don't remove it.

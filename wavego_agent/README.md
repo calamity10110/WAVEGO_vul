@@ -55,6 +55,7 @@ Real hardware later: `MotionSupervisor(SerialTransport(), telemetry=..., ...)`.
 | ------- | ------------------------------------------------- | -------------------------------------- |
 | `walk`  | `direction`, `speed`, `duration`                  | `T:115` (cadence, if changed) + `T:111` |
 | `run`   | `direction`, `speed`, `duration`                  | same, faster cadence                   |
+| `walk`/`run` + engine fields | + `gait`, `height_mm`, `distance_mm` (all optional) | single `T:117` (parametric gait engine) |
 | `turn`  | `direction`, exactly one of `angle`\|`duration`   | `T:111` gait; `angle` closes the loop on IMU yaw |
 | `jump`  | —                                                 | `T:112` `{"func":3}`                   |
 | `stand` | —                                                 | `T:110`                                |
@@ -65,6 +66,20 @@ Real hardware later: `MotionSupervisor(SerialTransport(), telemetry=..., ...)`.
 Directions: `forward backward left right forward_left forward_right
 backward_left backward_right` — the firmware gait table's 8 headings.
 
+## Gait engine (T:117)
+
+Any of the optional engine fields on `walk`/`run` — `gait`
+(`crawl`/`walk`/`run`), `height_mm` (75–110), `distance_mm` (positive) —
+switches the command onto the firmware's parametric gait engine:
+continuous speed (stride × cadence per mode), eased body height, and
+distance targeting (the firmware auto-stops at the target and emits
+`{"T":-117,"done":true,...}`). `duration` remains the supervisor's
+safety deadline: whichever comes first stops the walk. Turn-in-place
+directions (`left`/`right`) fall back to the legacy `T:111` path — the
+engine has no turn mode in v1. Crawl is statically stable (one swing at
+a time, weight-shifted); run is a fast trot capped at speed 0.8 until
+bench-verified.
+
 ## Firmware-verified mapping (BodyCtrl.cpp / Config.h)
 
 - Gait `T:111 {"FB":fb,"LR":lr}`, fb/lr ∈ {-1,0,1}: forward=(1,0),
@@ -74,7 +89,8 @@ backward_left backward_right` — the firmware gait table's 8 headings.
   0.5 reproduces firmware defaults (delay 5 ms); bounds [2, 8] are
   **provisional until verified on hardware** — recalibrate before real walks.
 - FB/LR are integers in the firmware; analog speed is not possible at the
-  protocol level, hence the cadence mapping.
+  protocol level, hence the cadence mapping — or the `T:117` engine, which
+  decomposes speed into stride × cadence per gait mode.
 
 ## Testing
 
@@ -82,7 +98,7 @@ backward_left backward_right` — the firmware gait table's 8 headings.
 python -m pytest wavego_agent/tests -q
 ```
 
-90 tests: schema rejection cases, every translation mapping, yaw wraparound
+97 tests: schema rejection cases, every translation mapping, yaw wraparound
 across the ±180° seam, preemption, emergency stop latching, queue bounds,
 telemetry-watchdog safety stop, and the closed-loop turn/approach lifecycles
 — all with an injected clock, no threads, no hardware.

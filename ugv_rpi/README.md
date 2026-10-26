@@ -62,7 +62,7 @@ Live emitters (all implemented by the WAVEGO Pro firmware):
 | `base_oled(line, text)` | `{"T":202,"line":..,"text":..,"update":1}` | OLED status lines (IP, uptime) |
 | `base_json_ctrl(obj)` / `send_command(obj)` | any | raw passthrough |
 
-Everything else the firmware understands (47 commands — missions, gait tuning, WiFi, ESP-NOW…) can be sent through the raw passthrough or the web JSON console.
+Everything else the firmware understands (48 commands — missions, gait tuning, WiFi, ESP-NOW…) can be sent through the raw passthrough or the web JSON console.
 
 ### HTTP routes (Flask)
 

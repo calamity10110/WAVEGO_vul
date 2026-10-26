@@ -58,7 +58,7 @@ The upper computer communicates with the lower computer (the robot's driver base
 | `wavego_agent/` | Motion supervisor library: semantic-command validation, behavior layer, ESP32 translation, single UART owner — consumed by `pet/` |
 | `pet/` | WAVEGO Pet app: Qwen3-VL vision, brain/persona, display — drives the robot through `wavego_agent` — installer: `pet/install_pet.sh` |
 | `state_table.yaml` | Agent single source of truth: hex codebook (cross-checked against the instruction table), safety thresholds, tunables |
-| `wavego_pro_instruction_table.xlsx` / `.json` | Complete JSON command reference: 47 commands, feedback formats, unused/dead code audit |
+| `wavego_pro_instruction_table.xlsx` / `.json` | Complete JSON command reference: 48 commands, feedback formats, unused/dead code audit |
 
 ## Robot Schematic
 The system is a two-tier controller split by a JSON-over-UART contract:
@@ -119,7 +119,7 @@ jointID array (index 0..11): `{53, 52, 51, 41, 42, 43, 23, 22, 21, 31, 32, 33}` 
 ## Command Reference
 Every command is one JSON object with a `"T"` type field. Full reference with parameters, handlers, examples, and feedback formats:
 
-- **`wavego_pro_instruction_table.xlsx`** — 3 sheets: Instruction Table (47 commands), Feedback (telemetry), Unused Code audit
+- **`wavego_pro_instruction_table.xlsx`** — 3 sheets: Instruction Table (48 commands), Feedback (telemetry), Unused Code audit
 - **`wavego_pro_instruction_table.json`** — same data, machine-readable
 - Waveshare wiki: [JSON Command Set](https://www.waveshare.com/wiki/WAVEGO_Pro#JSON_Command_Set) (documents the T:101–107 basics)
 
@@ -167,7 +167,7 @@ On a clean Raspberry Pi OS (Bookworm), with the camera ribbon connected, downloa
 
 The bundle is self-documenting: it contains the full `agent/` + `ugv_rpi/` + `pet/` +
 `wavego_agent/` trees, the
-complete 47-command reference (`.json` + `.xlsx`), `state_table.yaml`, this README, and
+complete 48-command reference (`.json` + `.xlsx`), `state_table.yaml`, this README, and
 the LICENSE — so after extraction every installer below works from the bundle, offline,
 no `git clone` needed. For the embodied agent: `cd ../agent && ./setup.sh && ./run.sh --simulate`.
 Continue at [Usage](#usage).
@@ -321,7 +321,7 @@ Notes:
 - The expansion port also exposes G21, G15, G12, 3V3 for assembly-mode control and extensions.
 
 ## Sending Commands
-All 47 commands are listed in [wavego_pro_instruction_table.xlsx](./wavego_pro_instruction_table.xlsx) with parameters and examples. Quick recipes:
+All 48 commands are listed in [wavego_pro_instruction_table.xlsx](./wavego_pro_instruction_table.xlsx) with parameters and examples. Quick recipes:
 
 **1. Web UI console (no code):** open the robot's web app (`[IP]:5000`), use the JSON command input box, e.g. `base -c {"T":111,"FB":1,"LR":0}` to walk forward. The ESP32's own web UI (`192.168.4.1`) has the same console.
 
@@ -409,7 +409,7 @@ A local autonomy stack built on one rule: **the model proposes, the validator di
 - `redteam_verdict.py` — 23 adversarial attacks (injection, verdict spoofing, frame loops) — 23/23 withstood
 - `test_fuzz.py` — seeded validator fuzzing (`python agent/test_fuzz.py 1337 10000`) — 0 violations
 
-**Codebook** (`state_table.yaml`): cross-checked against `wavego_pro_instruction_table.json` (firmware `Config.h` + `main.cpp`). Unverified codes (SIT, JUMP, …) are quarantined until you flip `verified: true` after physical testing. Note: `T:111` has no speed parameter, so WALK_SLOW emits the same JSON as WALK; there is no firmware wave function (the old `func:99` mapping was removed).
+**Codebook** (`state_table.yaml`): cross-checked against `wavego_pro_instruction_table.json` (firmware `Config.h` + `main.cpp`). Unverified codes (SIT, JUMP, …) are quarantined until you flip `verified: true` after physical testing. Note: `T:111` has no speed parameter, so WALK_SLOW emits the same JSON as WALK; there is no firmware wave function (the old `func:99` mapping was removed). The `T:117` gait engine is the speed-capable path (crawl/walk/run modes, continuous speed, height, stride, distance targeting).
 
 **Learner** (`learner.py`): quarantine-first knowledge store on the same `state.db`. Observations land in the `learned` tier; promotion to the trusted `core` tier requires minimum trials, failure tilt below threshold, and value consistency. Hex-looking keys are refused promotion — learning can never grow the motion authority. Idle-time promotion runs inside the agent loop under a time budget + minimum interval (`learner:` section of `state_table.yaml`).
 

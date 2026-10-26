@@ -6,11 +6,15 @@
 # Codebook cross-checked against wavego_pro_instruction_table.json
 # (source: Config.h command IDs + main.cpp dispatcher):
 #   - T:111 has NO speed parameter; the code speed byte is advisory only.
+#     (The T:117 parametric gait engine is the speed-capable alternative.)
 #   - T:112 func selectors are exactly 1=StayLow, 2=HandShake, 3=Jump,
 #     4=steady START, 5=steady STOP. The former 0A0000 WAVE (func:99) had
 #     no firmware function and was removed.
 #   - T:114 h clamps to WALK_HEIGHT_MIN..MAX = 75..110 mm.
 #   - T:133 Y pitch range is -30..+30 (maps to -17.5..+17.5 deg).
+#   - T:117 (gait engine) is level-based like T:111; any takeover command
+#     (T:1/110/111/112/114/133) stops it. Distance targets emit a one-shot
+#     {"T":-117,"done":true,...} event on completion.
 
 motion:
   codebook:
@@ -26,6 +30,8 @@ motion:
     "090000": { name: SHAKE_PAW,  verified: false, esp32: '{"T":112,"func":2}',       desc: "handshake (T:112 func guess)" }
     "0B0000": { name: JUMP,       verified: false, esp32: '{"T":112,"func":3}',       desc: "jump (T:112 func guess)" }
     "0C0000": { name: NOD,        verified: false, esp32: '{"T":133,"X":0,"Y":-10}',  desc: "head down gesture (T:133 pitch)" }
+    "0D0300": { name: CRAWL_FWD,  verified: false, esp32: '{"T":117,"mode":0,"speed":0.5,"heading":0}', desc: "engine crawl forward (T:117 mode 0; needs bench verification)" }
+    "0E0300": { name: RUN_FWD,    verified: false, esp32: '{"T":117,"mode":2,"speed":0.5,"heading":0}', desc: "engine run forward (T:117 mode 2; capped 0.8 until verified)" }
 
   forbidden_transitions:
     - ["0B0000", "040300"]
