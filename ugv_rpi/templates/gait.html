@@ -114,6 +114,7 @@
             <button id="engineStart" class="primary">Start Engine (T:117)</button>
             <button id="engineStop" class="danger">Stop (T:111)</button>
         </div>
+        <p class="note" id="engineStatus" style="color:var(--acc)">engine status: waiting&hellip;</p>
         <p class="note">Parametric gait: mode sets duty/stride/cadence envelopes, speed scales within them, distance auto-stops at the target (completion event <code>{"T":-117,...}</code> on the serial console). T:111 / any pad or pose command takes control back.</p>
     </section>
 
@@ -188,6 +189,23 @@
         socketJson.emit('json', json);
         log('TX ' + JSON.stringify(json));
     }
+
+    var engineStatus = document.getElementById('engineStatus');
+    function renderEngine(s) {
+        var bits = [];
+        if (s.last_cmd) { bits.push('cmd mode ' + s.last_cmd.mode + ' speed ' + s.last_cmd.speed); }
+        if (s.last_done) {
+            bits.push('done: ' + Math.round(s.last_done.traveled) + ' mm / ' + s.last_done.cycles + ' cycles');
+        }
+        engineStatus.textContent = bits.length
+            ? 'engine status: ' + bits.join('  |  ') + (s.age_s != null ? '  (' + s.age_s + 's ago)' : '')
+            : 'engine status: no engine traffic yet';
+    }
+    var socketCtrl = io('http://' + location.host + '/ctrl');
+    socketCtrl.on('engine', function (s) {
+        renderEngine(s);
+        if (s.last_done) { log('ENGINE done ' + Math.round(s.last_done.traveled) + 'mm / ' + s.last_done.cycles + ' cycles', 'info'); }
+    });
 
     var container = document.getElementById('gaitParams');
     Object.keys(GAIT_DEFAULTS).forEach(function (key) {

@@ -89,6 +89,32 @@ MAX_CONNECTIONS = 1
 # Set to keep track of RTCPeerConnection instances
 pcs = set()
 
+# Gait engine (T:117) status: last command sent, last T:-117 completion
+# event, fed by the BaseController feedback hook (firmware -> UART -> here).
+GAIT = {'last_cmd': None, 'last_done': None, 't': None}
+
+
+def _gait_status():
+    g = dict(GAIT)
+    g['age_s'] = round(time.time() - g['t'], 1) if g['t'] else None
+    return g
+
+
+def _on_feedback(data):
+    t = data.get('T')
+    if t == 117:
+        GAIT['last_cmd'] = data
+        GAIT['t'] = time.time()
+    elif t == -117:
+        GAIT['last_done'] = data
+        GAIT['t'] = time.time()
+        try:
+            socketio.emit('engine', _gait_status(), namespace='/ctrl')
+        except Exception:
+            pass
+
+base.feedback_hook = _on_feedback
+
 # Camera funcs
 cvf = cv_ctrl.OpencvFuncs(thisPath, base)
 
@@ -558,6 +584,7 @@ def api_status():
     status = {
         'robot_name': f['base_config']['robot_name'],
         'motion': {'last_move_s_ago': motion_age},
+        'gait_engine': _gait_status(),
         'esp32': {
             'battery_voltage': base_data.get('v'),
             'raw_feedback': base_data,
@@ -720,6 +747,7 @@ def api_telemetry():
         joints=JOINTS,
         battery=base_data.get('v'),
         esp32_last=base_data,
+        gait_engine=_gait_status(),
         rpi={'cpu_load': si.cpu_load, 'cpu_temp': si.cpu_temp,
              'ram_usage': si.ram, 'wifi_rssi': si.wifi_rssi},
         video_fps=cvf.video_fps,
@@ -760,6 +788,7 @@ def update_data_websocket_single():
             f['fb']['cv_movtion_mode']: cvf.cv_movtion_lock
         }
         socketio.emit('update', socket_data, namespace='/ctrl')
+        socketio.emit('engine', _gait_status(), namespace='/ctrl')
     except Exception as e:
         print("An [app.update_data_websocket_single] error occurred:", e)
 

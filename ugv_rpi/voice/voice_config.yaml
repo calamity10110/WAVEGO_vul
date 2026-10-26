@@ -43,6 +43,10 @@ commands:
     cmd: {"T": 112, "func": 3}
   - phrases: ["go back", "back up", "backward", "back"]
     cmd: {"T": 111, "FB": -1, "LR": 0}
+  - phrases: ["crawl forward", "crawl", "creep", "slow walk", "walk slow", "walk slowly"]
+    cmd: {"T": 117, "mode": 0, "speed": 0.3, "heading": 0}
+  - phrases: ["jog forward", "run forward", "jog", "run", "faster"]
+    cmd: {"T": 117, "mode": 2, "speed": 0.6, "heading": 0}
   - phrases: ["walk forward", "go forward", "come here", "forward", "come"]
     cmd: {"T": 111, "FB": 1, "LR": 0}
   - phrases: ["turn left", "left"]

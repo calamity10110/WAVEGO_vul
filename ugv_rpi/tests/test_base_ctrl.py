@@ -104,12 +104,28 @@ def test_json_ctrl_passthrough():
     assert c.commands == [{"T": 301, "name": "m"}]
 
 
+def test_gait_engine_ctrl_payload_full():
+    c = _CaptureController()
+    c.gait_engine_ctrl(0, 0.4, heading=30, height=90, stride=20, distance=500)
+    assert c.commands == [{"T": 117, "mode": 0, "speed": 0.4,
+                           "heading": 30.0, "height": 90.0,
+                           "stride": 20.0, "distance": 500.0}]
+
+
+def test_gait_engine_ctrl_partial_update_omits_absent_fields():
+    c = _CaptureController()
+    c.gait_engine_ctrl(2, 0.6)
+    assert c.commands == [{"T": 117, "mode": 2, "speed": 0.6}]
+
+
 # -------------------------------------------------------- motion gating
 
 def test_motion_commands():
     assert is_motion_command({"T": 1, "L": 0.5, "R": 0})
     assert is_motion_command({"T": 111, "FB": 1, "LR": 0})
     assert is_motion_command({"T": 111, "FB": 0, "LR": -1})
+    assert is_motion_command({"T": 117, "mode": 0, "speed": 0.3})
+    assert is_motion_command({"T": 117, "mode": 2, "speed": 0.8, "distance": 500})
 
 
 def test_non_motion_commands():
@@ -117,6 +133,11 @@ def test_non_motion_commands():
     assert not is_motion_command({"T": 111, "FB": 0, "LR": 0})
     assert not is_motion_command({"T": 1, "L": 0, "R": 0})
     assert not is_motion_command({"T": 133, "X": 1})
+    # any T:117 counts as motion: the firmware merges partial updates onto
+    # its previous params, so even a height-only command can restart
+    # walking at an inherited speed; over-reporting is the safe direction
+    assert is_motion_command({"T": 117, "mode": 0, "speed": 0})
+    assert is_motion_command({"T": 117, "mode": 1})
     assert not is_motion_command({})
     assert not is_motion_command("T:1")
     assert not is_motion_command(None)
@@ -172,6 +193,7 @@ def _bare_controller(rl, connected=True):
     b.rl = rl
     b.data_buffer = None
     b.base_data = None
+    b.feedback_hook = None
     return b
 
 
@@ -197,6 +219,38 @@ def test_feedback_disconnected_returns_none_without_reading():
 def test_feedback_malformed_json_is_swallowed():
     b = _bare_controller(FakeReadLine(['not json']))
     assert b.feedback_data() is None
+
+
+def test_feedback_hook_fires_for_every_parsed_line():
+    rl = FakeReadLine(['{"T":-117,"done":true,"traveled":120.0,"cycles":2}\n',
+                       '{"T":1001,"v":7.4}\n'], in_waiting=9)
+    b = _bare_controller(rl)
+    seen = []
+    b.feedback_hook = seen.append
+    b.feedback_data()
+    assert [d["T"] for d in seen] == [-117, 1001]
+
+
+def test_feedback_hook_absent_or_broken_never_breaks_parsing():
+    rl = FakeReadLine(['{"T":1003,"v":7.4}\n'])
+    b = _bare_controller(rl)          # no hook set
+    assert b.feedback_data() == {"T": 1003, "v": 7.4}
+
+    def bad_hook(d):
+        raise RuntimeError("hook blew up")
+    rl2 = FakeReadLine(['{"T":1003}\n'])
+    b2 = _bare_controller(rl2)
+    b2.feedback_hook = bad_hook
+    assert b2.feedback_data() == {"T": 1003}
+
+
+def test_feedback_hook_ignores_lines_without_t():
+    rl = FakeReadLine(['{"no_t":1}\n'], in_waiting=1)
+    b = _bare_controller(rl)
+    seen = []
+    b.feedback_hook = seen.append
+    b.feedback_data()
+    assert seen == []
 
 
 # ------------------------------------------------- command pipeline (UART)
@@ -310,8 +364,8 @@ def test_reconnect_backoff_within_five_second_window():
 # ----------------------------------------------------------- no-hw stand-ins
 
 COMMAND_METHODS = ["send_command", "base_json_ctrl", "base_speed_ctrl",
-                   "gimbal_ctrl", "base_oled", "rgb_light", "feedback_data",
-                   "gimbal_dev_close"]
+                   "gait_engine_ctrl", "gimbal_ctrl", "base_oled",
+                   "rgb_light", "feedback_data", "gimbal_dev_close"]
 
 
 def test_null_base_controller_absorbs_everything():
@@ -319,6 +373,7 @@ def test_null_base_controller_absorbs_everything():
     null.send_command({"T": 1})
     null.base_json_ctrl({"T": 1})
     null.base_speed_ctrl(1, 1)
+    null.gait_engine_ctrl(0, 0.3)
     null.gimbal_ctrl(0, 0, 10, 0)
     null.base_oled(0, "hi")
     null.rgb_light(0, 1, 2, 3)

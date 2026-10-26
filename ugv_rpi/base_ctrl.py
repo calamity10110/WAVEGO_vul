@@ -14,14 +14,22 @@ with open(thisPath + '/config.yaml', 'r') as yaml_file:
 	f = yaml.safe_load(yaml_file)
 
 MOTION_CMD_TYPES = (1, 111)
+GAIT_ENGINE_CMD_TYPE = 117
 
 
 def is_motion_command(data):
 	"""True when a queued command actually moves the robot: T:1 speed or
-	T:111 gait with a nonzero component. A pure stop (all zeros) is not
-	motion — it must not feed the failsafe heartbeat. Pure function."""
+	T:111 gait with a nonzero component, or any T:117 gait-engine command.
+	A T:117 is a partial update — absent fields inherit the firmware's
+	previous params, so even a height-only command can restart walking at
+	an inherited speed; the host cannot know the merged state, and
+	over-reporting motion to the failsafe heartbeat is the safe direction.
+	A pure stop (all zeros) is not motion — it must not feed the
+	failsafe heartbeat. Pure function."""
 	if not isinstance(data, dict):
 		return False
+	if data.get('T') == GAIT_ENGINE_CMD_TYPE:
+		return True
 	if data.get('T') not in MOTION_CMD_TYPES:
 		return False
 	return bool(data.get('L') or data.get('R') or data.get('FB') or data.get('LR'))
@@ -185,6 +193,7 @@ class BaseController:
 		self.command_thread = threading.Thread(target=self.process_commands, daemon=True)
 		self.command_thread.start()
 		self.motion_hook = None
+		self.feedback_hook = None
 		self._last_reconnect = 0
 
 		self.data_buffer = None
@@ -204,12 +213,14 @@ class BaseController:
 					# print(self.data_buffer)
 					self.base_data = self.data_buffer
 					self.data_buffer = None
+					self._notify_feedback(self.base_data)
 					if self.base_data["T"] == 1003:
 						print(self.base_data)
 						return self.base_data
 			self.rl.clear_buffer()
 			self.data_buffer = json.loads(self.rl.readline().decode('utf-8'))
 			self.base_data = self.data_buffer
+			self._notify_feedback(self.base_data)
 			return self.base_data
 		except Exception as e:
 			self.rl.clear_buffer()
@@ -250,6 +261,19 @@ class BaseController:
 			pass
 
 
+	def _notify_feedback(self, data):
+		"""Fire feedback_hook for every parsed telemetry/event line (T:-117
+		gait completion, T:-207 battery, ...). Hook exceptions are absorbed:
+		telemetry must never break the command pipeline."""
+		if self.feedback_hook is None:
+			return
+		try:
+			if isinstance(data, dict) and 'T' in data:
+				self.feedback_hook(data)
+		except Exception:
+			pass
+
+
 	def _process_one(self, data):
 		"""Handle one dequeued command. While disconnected, motion commands
 		still feed the hook (heartbeat tracking) but nothing is written."""
@@ -273,6 +297,24 @@ class BaseController:
 
 	def base_speed_ctrl(self, input_left, input_right):
 		data = {"T":1,"L":input_left,"R":input_right}
+		self.send_command(data)
+
+
+	def gait_engine_ctrl(self, mode, speed, heading=None, height=None,
+			stride=None, distance=None):
+		"""T:117 parametric gait engine (crawl/walk/run). mode 0/1/2,
+		speed 0..1; the rest are optional — None lets the firmware keep
+		its current value (the command is a partial update). Speed is
+		clamped per mode by the firmware (run caps at 0.8)."""
+		data = {"T": GAIT_ENGINE_CMD_TYPE, "mode": int(mode), "speed": float(speed)}
+		if heading is not None:
+			data["heading"] = float(heading)
+		if height is not None:
+			data["height"] = float(height)
+		if stride is not None:
+			data["stride"] = float(stride)
+		if distance is not None:
+			data["distance"] = float(distance)
 		self.send_command(data)
 
 
@@ -332,6 +374,7 @@ class NullBaseController:
     def __init__(self):
         self.connected = False
         self.motion_hook = None
+        self.feedback_hook = None
         self.base_data = {}
         self.rl = ReadLineStub()
 
@@ -342,6 +385,10 @@ class NullBaseController:
         pass
 
     def base_speed_ctrl(self, input_left, input_right):
+        pass
+
+    def gait_engine_ctrl(self, mode, speed, heading=None, height=None,
+                         stride=None, distance=None):
         pass
 
     def gimbal_ctrl(self, input_x, input_y, input_speed, input_acceleration):

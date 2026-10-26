@@ -68,6 +68,13 @@
     </section>
 
     <section>
+        <h2>Gait Engine (T:117) <span class="badge" id="gaitAge">--</span></h2>
+        <div class="tele-row"><span class="k">LAST CMD</span><span class="v" id="gaitCmd" style="font-size:12px">--</span></div>
+        <div class="tele-row"><span class="k">LAST COMPLETION (T:-117)</span><span class="v" id="gaitDone" style="font-size:12px">--</span></div>
+        <p class="note" style="font-size:11px;color:var(--dim);margin-top:6px">completion = distance target reached (traveled mm / gait cycles); reflects traffic seen on the UART by this app</p>
+    </section>
+
+    <section>
         <h2>VLM Session <span class="badge" id="vlmBadge">--</span></h2>
         <div class="err-box" id="vlmLog"><div class="empty">vlm service idle or down</div></div>
     </section>
@@ -180,6 +187,13 @@
 
             renderJoints(d.joints.fb, d.joints.t);
             ageBadge('jAge', d.joints.t, 4);
+
+            var g = d.gait_engine || {};
+            $('gaitCmd').textContent = g.last_cmd
+                ? ('T:117 mode ' + g.last_cmd.mode + ' speed ' + g.last_cmd.speed) : '--';
+            $('gaitDone').textContent = g.last_done
+                ? (Math.round(g.last_done.traveled) + ' mm / ' + g.last_done.cycles + ' cycles') : '--';
+            ageBadge('gaitAge', g.t, 30);
 
             renderHostErrs(d.errors || []);
         }).catch(function () { $('rpiAge').textContent = 'link down'; $('rpiAge').className = 'badge err'; });

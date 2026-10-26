@@ -9,10 +9,10 @@ model is loaded exactly once at startup; per-utterance cost is inference only
 (spawning per command costs ~3.2 s of Python+ONNX init — that is the failure
 mode this process exists to avoid).
 
-Movement commands (T:111 with nonzero FB/LR) are level commands: the gait
-keeps walking until the next T:111. Every voice-triggered movement is
-therefore armed with move_timeout_s — the robot stops itself if no follow-up
-command arrives.
+Movement commands (T:111 with nonzero FB/LR, or T:117 gait-engine with
+speed > 0) are level commands: the gait keeps walking until the next stop
+command. Every voice-triggered movement is therefore armed with
+move_timeout_s — the robot stops itself if no follow-up command arrives.
 """
 
 import os
@@ -101,6 +101,22 @@ def normalize(text):
     return re.sub(r"[^a-z0-9 ]+", " ", text.lower()).strip()
 
 
+def is_movement_cmd(cmd):
+    """Movement payloads arm the auto-stop timer: T:111 with a nonzero
+    component, or T:117 gait-engine with speed > 0 (the firmware only
+    starts walking on a positive engine speed)."""
+    if not isinstance(cmd, dict):
+        return False
+    if cmd.get("T") == 111:
+        return bool(cmd.get("FB") or cmd.get("LR"))
+    if cmd.get("T") == 117:
+        try:
+            return float(cmd.get("speed") or 0) > 0
+        except (TypeError, ValueError):
+            return False
+    return False
+
+
 def match_command(text, commands):
     tokens = text.split()
     for entry in commands:
@@ -174,7 +190,7 @@ class VoiceAssistant:
             ok = self.api.send_cmd(entry["cmd"])
             log(f"cmd -> {entry['cmd']} ok={ok}")
         cmd = entry.get("cmd") or {}
-        is_movement = cmd.get("T") == 111 and (cmd.get("FB") or cmd.get("LR"))
+        is_movement = is_movement_cmd(cmd)
         if is_movement:
             self.stop_deadline = time.time() + self.move_timeout_s
         else:
