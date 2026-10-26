@@ -142,3 +142,72 @@ def test_lean_pitch_up_negates_firmware_sign():
 
 def test_lean_defaults_level():
     assert t({"action": "lean"}) == [{"T": 133, "X": 0.0, "Y": 0.0}]
+
+
+# ------------------------------------------------------------- gait engine
+# T:117 — any of gait/height_mm/distance_mm switches walk/run onto the
+# parametric engine; mode codes and headings mirror GaitEngine.h.
+
+def test_engine_walk_with_gait_field():
+    out = t({"action": "walk", "direction": "forward", "speed": 0.5,
+             "duration": 3, "gait": "crawl"})
+    assert out == [{"T": 117, "mode": 0, "speed": 0.5, "heading": 0}]
+
+
+def test_engine_run_defaults_to_run_mode():
+    out = t({"action": "run", "direction": "forward", "speed": 0.8,
+             "duration": 2, "distance_mm": 300})
+    assert out == [{"T": 117, "mode": 2, "speed": 0.8, "heading": 0,
+                    "distance": 300}]
+
+
+def test_engine_walk_defaults_to_walk_mode():
+    out = t({"action": "walk", "direction": "backward", "speed": 0.3,
+             "duration": 2, "height_mm": 85})
+    assert out == [{"T": 117, "mode": 1, "speed": 0.3, "heading": 180,
+                    "height": 85}]
+
+
+def test_engine_diagonal_headings_match_gait_table():
+    # same angles the legacy FB/LR table encodes: +left, -right
+    assert t({"action": "walk", "direction": "forward_left", "duration": 1,
+              "gait": "walk"})[0]["heading"] == 30
+    assert t({"action": "walk", "direction": "forward_right", "duration": 1,
+              "gait": "walk"})[0]["heading"] == -30
+    assert t({"action": "walk", "direction": "backward_left", "duration": 1,
+              "gait": "walk"})[0]["heading"] == 120
+    assert t({"action": "walk", "direction": "backward_right", "duration": 1,
+              "gait": "walk"})[0]["heading"] == -120
+
+
+def test_engine_turn_in_place_falls_back_to_legacy():
+    # engine has no turn mode in v1 — T:111 keeps that job
+    assert t({"action": "walk", "direction": "left", "duration": 1,
+              "gait": "crawl"}) == [{"T": 111, "FB": 0, "LR": -1}]
+    assert t({"action": "run", "direction": "right", "duration": 1,
+              "distance_mm": 100}) == [{"T": 111, "FB": 0, "LR": 1}]
+
+
+def test_engine_command_marks_cadence_dirty():
+    st = TranslatorState()
+    out = translate(parse_command({"action": "walk", "direction": "forward",
+                                   "duration": 1, "gait": "crawl"}), st)
+    assert out[0]["T"] == 117
+    assert st.cadence is None               # engine owns firmware cadence now
+    st2, restore = reset_cadence(st)        # supervisor runs this after the behavior
+    assert restore == {"T": 115, "delay": 5, "iterate": 0.02}
+    assert st2.cadence == DEFAULT_CADENCE
+
+
+def test_engine_rejects_out_of_bounds():
+    import pytest
+    from wavego_agent.schema import CommandRejected
+    with pytest.raises(CommandRejected):
+        parse_command({"action": "walk", "direction": "forward", "duration": 1,
+                       "height_mm": 111})   # above WALK_HEIGHT_MAX
+    with pytest.raises(CommandRejected):
+        parse_command({"action": "run", "direction": "forward", "duration": 1,
+                       "distance_mm": 0})   # must be positive
+    with pytest.raises(CommandRejected):
+        parse_command({"action": "walk", "direction": "forward", "duration": 1,
+                       "gait": "sprint"})   # unknown style

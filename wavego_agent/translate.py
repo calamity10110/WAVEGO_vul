@@ -42,6 +42,21 @@ SIT_CMD = {"T": 112, "func": 1}
 JUMP_CMD = {"T": 112, "func": 3}
 STAND_CMD = {"T": 110}
 
+# Gait engine (T:117) — mode codes and heading angles from GaitEngine.h /
+# BodyCtrl.cpp robotCtrl. Heading sign matches the firmware gait table:
+# positive = travel toward the LEFT. "left"/"right" are turn-in-place and
+# have no heading — engine commands with those directions fall back to the
+# legacy T:111 turn path.
+GAIT_MODE_TO_T = {"crawl": 0, "walk": 1, "run": 2}
+DIRECTION_TO_HEADING = {
+    "forward": 0,
+    "forward_left": 30,
+    "forward_right": -30,
+    "backward_left": 120,
+    "backward_right": -120,
+    "backward": 180,
+}
+
 # Cadence interpolation anchors (STEP_DELAY in ms; firmware default 5 at 0.5).
 SLOW_DELAY_MS = 8.0
 FAST_DELAY_MS = 2.0
@@ -87,9 +102,29 @@ def cadence_for_speed(speed: float) -> Cadence:
 @dataclass
 class TranslatorState:
     """What the firmware's gait parameters are believed to be right now, so
-    T:115 is only sent when the cadence actually changes."""
+    T:115 is only sent when the cadence actually changes. ``cadence=None``
+    means "the engine (T:117) owns the firmware cadence now" — it is dirty
+    until reset_cadence restores the default."""
 
-    cadence: Cadence = DEFAULT_CADENCE
+    cadence: Cadence | None = DEFAULT_CADENCE
+
+
+def _engine_native(cmd) -> dict | None:
+    """Build the T:117 gait-engine command for a walk/run, or None when the
+    command uses no engine fields (legacy path) or turns in place (the
+    engine has no turn mode in v1 — T:111 keeps that job)."""
+    if cmd.gait is None and cmd.height_mm is None and cmd.distance_mm is None:
+        return None
+    if cmd.direction not in DIRECTION_TO_HEADING:
+        return None
+    mode = cmd.gait or ("run" if cmd.action == "run" else "walk")
+    native = {"T": 117, "mode": GAIT_MODE_TO_T[mode], "speed": cmd.speed,
+              "heading": DIRECTION_TO_HEADING[cmd.direction]}
+    if cmd.height_mm is not None:
+        native["height"] = cmd.height_mm
+    if cmd.distance_mm is not None:
+        native["distance"] = cmd.distance_mm
+    return native
 
 
 def translate(cmd: SemanticCommand, state: TranslatorState | None = None) -> list[dict]:
@@ -103,6 +138,13 @@ def translate(cmd: SemanticCommand, state: TranslatorState | None = None) -> lis
         return []
 
     if cmd.action in ("walk", "run"):
+        engine = _engine_native(cmd)
+        if engine is not None:
+            # the engine owns cadence + stride from here; the tracked
+            # cadence is dirty until reset_cadence restores T:115 defaults
+            st.cadence = None
+            native.append(engine)
+            return native
         fb, lr = DIRECTION_TO_FB_LR[cmd.direction]
         want = cadence_for_speed(cmd.speed)
         if want != st.cadence:

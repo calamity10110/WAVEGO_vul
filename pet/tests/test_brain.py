@@ -66,10 +66,10 @@ def test_person_appearance_flows_through_to_motion():
     brain, supervisor, transport, clock, events = make_brain(
         [Scene(person_visible=True, position="center", gesture="none")])
     drain(brain, supervisor, clock, n=8)
-    # greet chain reached the wire: gait + gimbal look (+ jump from the
-    # first-greet trick) then the walk's stop
+    # greet chain reached the wire: crawl-gait engine walk + lean (+ jump
+    # from the first-greet trick) then the walk's stop
     native = transport.sent
-    assert {"T": 111, "FB": 1, "LR": 0} in native          # walk gait
+    assert {"T": 117, "mode": 0, "speed": 0.4, "heading": 0} in native  # crawl walk
     assert {"T": 133, "X": 0.0, "Y": -17.14} in native     # lean up
     assert {"T": 112, "func": 3} in native                 # jump
     assert any(e["event"] == "pet_command" for e in events)
@@ -175,4 +175,4 @@ def test_stable_person_claim_passes_validator_and_greets():
     brain.validator = SoftwareValidator(confirm_threshold=2)
     # scene 1: not confirmed (first claim); scene 2 (12 s later): confirmed
     drain(brain, supervisor, clock, n=30, dt=1.0)
-    assert {"T": 111, "FB": 1, "LR": 0} in transport.sent
+    assert {"T": 117, "mode": 0, "speed": 0.4, "heading": 0} in transport.sent

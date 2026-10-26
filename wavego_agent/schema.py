@@ -22,6 +22,11 @@ MIN_DURATION_S = 0.1
 MAX_ANGLE_DEG = 360.0
 MIN_ANGLE_DEG = 1.0
 
+# Gait engine (T:117) bounds — mirror GaitEngine.h / BodyCtrl.cpp live limits.
+HEIGHT_MM_MIN = 75.0
+HEIGHT_MM_MAX = 110.0
+MAX_DISTANCE_MM = 10_000
+
 Direction8 = Literal[
     "forward",
     "backward",
@@ -34,6 +39,10 @@ Direction8 = Literal[
 ]
 TurnDirection = Literal["left", "right"]
 
+# Any of these optional fields switches walk/run onto the parametric gait
+# engine (firmware T:117); without them the legacy T:115+T:111 path is used.
+GaitStyle = Literal["crawl", "walk", "run"]
+
 
 class _Command(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -41,13 +50,19 @@ class _Command(BaseModel):
     speed: Annotated[float, Field(ge=0.0, le=1.0)] = 0.5
 
 
-class Walk(_Command):
+class _EngineWalkRun(_Command):
+    gait: GaitStyle | None = None
+    height_mm: Annotated[float, Field(ge=HEIGHT_MM_MIN, le=HEIGHT_MM_MAX)] | None = None
+    distance_mm: Annotated[int, Field(ge=1, le=MAX_DISTANCE_MM)] | None = None
+
+
+class Walk(_EngineWalkRun):
     action: Literal["walk"]
     direction: Direction8
     duration: Annotated[float, Field(ge=MIN_DURATION_S, le=MAX_DURATION_S)]
 
 
-class Run(_Command):
+class Run(_EngineWalkRun):
     action: Literal["run"]
     direction: Direction8
     duration: Annotated[float, Field(ge=MIN_DURATION_S, le=MAX_DURATION_S)]

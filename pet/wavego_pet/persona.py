@@ -94,8 +94,11 @@ class PetPersona:
 
     def _walk(self, direction: str, duration: float, speed: float) -> dict:
         d, s = self._clamp_walk(duration, speed)
+        # crawl gait (T:117 engine): statically stable, one leg swings at a
+        # time — the calm pet gait. Turn-in-place directions fall back to
+        # the legacy T:111 turn path in the translator.
         return {"action": "walk", "direction": direction, "duration": d,
-                "speed": s}
+                "speed": s, "gait": "crawl"}
 
     def _turn(self, direction: str) -> dict:
         return {"action": "turn", "direction": direction,
