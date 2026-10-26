@@ -13,3 +13,6 @@ ugv_rpi/releases/
 .ipynb_checkpoints/
 # repowise local index + API keys (regenerate with: repowise init --yes --no-prose)
 .repowise/
+
+# release/build artifacts — canonical copies live on the GitHub Releases page
+/dist/
