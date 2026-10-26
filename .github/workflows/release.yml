@@ -37,6 +37,15 @@ jobs:
           python agent/test_fuzz.py 1337 5000
           python agent/redteam_verdict.py
 
+      - name: Gait engine host tests (g++)
+        run: |
+          g++ -std=c++17 -Wall -Wextra \
+            -I wavego_pro_platformio/WAVEGO_Pro_PlatformIO/src \
+            wavego_pro_platformio/tests/test_gait_engine.cpp \
+            wavego_pro_platformio/WAVEGO_Pro_PlatformIO/src/GaitEngine.cpp \
+            -o /tmp/gait_test
+          /tmp/gait_test
+
       - name: ugv_rpi + wavego_agent + pet unit tests (pure subset; heavy Pi deps stubbed)
         run: python -m pytest ugv_rpi/tests wavego_agent/tests pet/tests -q
 
