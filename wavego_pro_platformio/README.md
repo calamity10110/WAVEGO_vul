@@ -36,20 +36,21 @@ Single JSON dispatcher (`jsonCmdReceiveHandler` in `src/main.cpp`), fed from thr
 | HTTP | `GET /js?json=<url-encoded JSON>` on port 80; response body = feedback JSON |
 | ESP-NOW | peer payloads routed into the same handler when initialized (T:410/411) |
 
-Command groups (all 47 with parameters in the [instruction table](../wavego_pro_instruction_table.xlsx)):
+Command groups (all 48 with parameters in the [instruction table](../wavego_pro_instruction_table.xlsx)):
 
 | Range | Group | Highlights |
 |---|---|---|
 | 1, 133 | drive compat / body pose | `{"T":1,"L":..,"R":..}`, `{"T":133,"X":..,"Y":..}` |
 | 101-107 | servo calibration | middle / torque / single servo / zero get-set (102-103 assembly mode only) |
 | 108-116 | motion | joint angle/rad, stand, vector move `T:111`, functions `T:112` (stayLow/handshake/jump/steady), leg ctrl, height, interpolation & gait tuning |
+| 117 | parametric gait engine | `{"T":117,"mode":0|1|2,"speed":0..1,"heading":deg,"height":mm,"stride":mm,"distance":mm}` — crawl/walk/run with continuous speed and distance targeting; all fields optional (partial update). Completes with `{"T":-117,"done":true,"traveled":mm,"cycles":n}`. Any pose/locomotion command (T:1/110/111/112/114/133) takes control back; `T:111 FB:0 LR:0` remains the universal stop. Source: `src/GaitEngine.h/.cpp` (pure module, host-tested), wrapper in `BodyCtrl::engineCtrl()` |
 | 201-207 | peripherals | RGB `T:201`, OLED 202-205, buzzer 206, battery 207 |
 | 300-399 | missions (LittleFS) | create/append/insert/replace/delete/run steps, format flash |
 | 400-403 | WiFi | mode set (persisted to `boot`), info, AP/STA IP |
 | 410-414 | ESP-NOW | init, mode, MAC get/send/add-peer |
 | 600-601 | system | reboot, clear NVS |
 
-Feedback (ESP32 → host): `{"T":-106,"fb":[12]}` positions, `{"T":-207,"voltage":V}` battery, positive echoes for T:105/400, and unsolicited telemetry `{"T":1001,...,"v":<V>,...}` every 5 s. T:104/300/302/401-403/412 reply as plain serial text.
+Feedback (ESP32 → host): `{"T":-106,"fb":[12]}` positions, `{"T":-207,"voltage":V}` battery, `{"T":-117,"done":true,"traveled":mm,"cycles":n}` gait-engine distance completion (one-shot), positive echoes for T:105/400, and unsolicited telemetry `{"T":1001,...,"v":<V>,...}` every 5 s. T:104/300/302/401-403/412 reply as plain serial text.
 
 Known pitfalls: T:300/303-306 have **different meanings** than in Waveshare's generic UGV stack (mission files vs ESP-NOW peer ops) — don't send UGV-style `send`/`T:300` traffic here. RGB channel order is r/g-swapped at the strip (`RGBLight.cpp` passes `Color(g,r,b)`).
 

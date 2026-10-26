@@ -31,7 +31,7 @@ The app auto-starts on boot (`app.py`). Manual control:
 
 ### Access
 
-- **Web UI**: `http://<robot-ip>:5000` — shared tab bar across all pages: Control (movement pad, CV mode buttons incl. FOLLOW, JSON console), Dashboard (telemetry + d-pad), **Telemetry (joints, sensors, host/client errors, VLM session log)**, Joystick (dual-stick), Gait (ESP32 live tuning), Settings (camera/movement/identity), Photos, Videos
+- **Web UI**: `http://<robot-ip>:5000` — shared tab bar across all pages: Control (movement pad, CV mode buttons incl. FOLLOW, JSON console), Dashboard (telemetry + d-pad), **Telemetry (joints, gait engine, sensors, host/client errors, VLM session log)**, Joystick (dual-stick), Gait (ESP32 live tuning + the T:117 gait-engine card), Settings (camera/movement/identity), Photos, Videos
 - **Audio upload/playback removed** — the unused pygame/pyttsx3 stack was dead code and its endpoints returned fake success
 - **JupyterLab tutorials**: `http://<robot-ip>:8888`
 - **Hotspot fallback**: if no known WiFi is found, AccessPopup opens `AccessPopup` / `1234567890` with the UI at `192.168.50.5:5000`
@@ -87,7 +87,7 @@ For programs on or off the Raspberry Pi that need to drive the robot or read sen
 | `/api/vlm/stop` | POST | stop robot motion + end the current VLM session |
 | `/api/config` | GET/POST | whitelisted runtime settings — `GET` returns flat `key: value` (video res/quality, movement speeds/rates, robot name); `POST` a partial patch (e.g. `{"video.default_quality": 55}`) to validate, apply, and persist to `config.yaml`. Unknown keys / out-of-range values are rejected with 400 |
 | `/api/telemetry` | GET | realtime snapshot: polled joint positions (T:106 @1 Hz, `joints.fb`[12] + timestamp), battery, last raw ESP32 feedback, RPi cpu/temp/ram/rssi, video FPS, CV mode, and the last 50 host errors (logging ≥WARNING + Flask exceptions, bounded ring). Consumed by the Telemetry tab |
-| `/api/status` | GET | sensor/status snapshot: ESP32 battery voltage + last raw feedback, RPi CPU/temp/RAM/RSSI, video FPS + stream URLs, CV mode |
+| `/api/status` | GET | sensor/status snapshot: ESP32 battery voltage + last raw feedback, gait-engine state (last T:117 / last T:-117 completion), RPi CPU/temp/RAM/RSSI, video FPS + stream URLs, CV mode |
 | `/video_feed` | GET | MJPEG camera stream (consume directly from any client) |
 | `/offer` | POST | WebRTC signaling for the camera |
 
@@ -113,7 +113,7 @@ Commands are discrete `T:111` vectors per the firmware contract and are sent onl
 
 ### Known limitation: motion commands outlive the controlling process
 
-`T:111` gait commands are **level-based** — the ESP32 firmware repeats the last command until the next one arrives. There is no command timeout in the firmware, so if the process that issued a movement dies before sending a stop, **the robot keeps walking**. Concretely:
+`T:111` gait commands (and `T:117` gait-engine walks) are **level-based** — the ESP32 firmware repeats the last command until the next one arrives. There is no command timeout in the firmware, so if the process that issued a movement dies before sending a stop, **the robot keeps walking**. Concretely:
 
 - `app.py` crashing, being killed, or the Pi rebooting / losing power mid-walk while the mainboard stays powered — this affects person-follow, the web movement pad, and keyboard control alike (pre-existing exposure, not introduced by the follow mode)
 - the voice assistant dying inside the `move_timeout_s` window — the auto-stop is enforced by the voice process itself
@@ -125,7 +125,7 @@ Operational recommendations:
 1. **Suspension first**: for any new build or parameter change, put the robot on a stand (belly supported, feet off the ground) and verify mode/state behavior with zero locomotion risk.
 2. **Leash on first ground tests**: attach a drag line to the chassis before enabling FOLLOW or voice movement on the ground.
 3. **Rehearse the failure**: know where the power switch is before the first autonomous walk. On a leash, test it deliberately — start following, `pkill -f app.py`, observe that the robot keeps moving, cut power. That is expected behavior, not a bug to chase.
-4. **Install the failsafe daemon** (`./install_failsafe.sh` → `wavego-failsafe.service`): it polls the app every second; if the app stops responding within the motion grace window (last movement command <10 s ago), it opens the freed UART directly and writes a stop. Best-effort — it cannot see unreported motion and cannot act while a hung-but-alive app still holds the serial device — but it converts "walks forever" into "stops within seconds" for the app-death case.
+4. **Install the failsafe daemon** (`./install_failsafe.sh` → `wavego-failsafe.service`): it polls the app every second; if the app stops responding within the motion grace window (last movement command <10 s ago), it opens the freed UART directly and writes a stop. The heartbeat counts `T:111`, `T:1` **and every `T:117` engine command** (a T:117 is a partial update whose absent fields inherit the previous speed, so any of them may start motion). Best-effort — it cannot see unreported motion and cannot act while a hung-but-alive app still holds the serial device — but it converts "walks forever" into "stops within seconds" for the app-death case.
 
 **No ESP32 reflash is required for anything in this project** — every feature runs on stock firmware. A firmware-side gait auto-timeout (stop when no `T:111`/`T:1` arrives within N ms, in `wavego_pro_platformio`) remains an *optional* future improvement: it would close the gap at the root and cover the hung-but-alive-app case that the host-side failsafe cannot. Until you choose to flash it, the failsafe daemon plus the manual rules above are the safety story.
 
@@ -159,7 +159,7 @@ The web UI, galleries, settings, and all services work in this mode — only rob
 
 ## Voice assistant (optional)
 
-`voice/voice_assistant.py` is a persistent voice-command process: USB mic (16 kHz mono) → energy VAD with endpointing → Moonshine ONNX transcription → phrase grammar in `voice/voice_config.yaml` → robot via `/api/cmd` and `/api/cv`. The model is loaded once at startup — per-utterance cost is inference only (spawning a fresh Python+ONNX process per command costs ~3.2 s, which is what this design avoids). Gait commands are level-based, so every voice-triggered movement auto-stops after `move_timeout_s` (default 3 s) unless a follow-up command arrives. If the voice process itself dies inside that window, the gait persists — see [*Known limitation*](#known-limitation-motion-commands-outlive-the-controlling-process) above.
+`voice/voice_assistant.py` is a persistent voice-command process: USB mic (16 kHz mono) → energy VAD with endpointing → Moonshine ONNX transcription → phrase grammar in `voice/voice_config.yaml` → robot via `/api/cmd` and `/api/cv`. The model is loaded once at startup — per-utterance cost is inference only (spawning a fresh Python+ONNX process per command costs ~3.2 s, which is what this design avoids). Gait commands are level-based, so every voice-triggered movement auto-stops after `move_timeout_s` (default 3 s) unless a follow-up command arrives — this covers `T:111` moves and the T:117 engine phrases (*"crawl"* → crawl at 0.3, *"jog"/"run"* → run mode at 0.6). If the voice process itself dies inside that window, the gait persists — see [*Known limitation*](#known-limitation-motion-commands-outlive-the-controlling-process) above.
 
 Install on the robot (from `ugv_rpi/`):
 
@@ -195,10 +195,11 @@ If the benchmark fails the gate, set `capture.resize_px: 224` in `vlm_ctrl/confi
 - `/ctrl` — inbound `{"A": <code>, ...}`; `code` values come from `config.yaml` `code:` section (movement keys, CV modes, photo/video, LED modes, motion lock). Unknown codes are ignored.
 - `/json` — inbound JSON forwarded verbatim to the ESP32 (the web JSON console uses this).
 - `update` (emit) — periodic telemetry to the UI: CPU/RAM/temp, RSSI, battery voltage (`v` from the `T:1001` heartbeat), pan/tilt estimates, video FPS.
+- `engine` (emit) — gait-engine state: last `T:117` command, last `T:-117` distance completion (`traveled`/`cycles`), age in seconds. Pushed on completion and with every `update` tick; the Gait card and the Telemetry gait-engine card subscribe.
 
 ### Feedback from the ESP32
 
-`BaseController.feedback_data()` parses serial lines: battery voltage arrives in the `T:1001` telemetry every 5 s; `{"T":-106,...}` / `{"T":-207,...}` answer position/voltage queries. See the Feedback sheet of the instruction table.
+`BaseController.feedback_data()` parses serial lines: battery voltage arrives in the `T:1001` telemetry every 5 s; `{"T":-106,...}` / `{"T":-207,...}` answer position/voltage queries; `{"T":-117,"done":true,"traveled":mm,"cycles":n}` fires once when a gait-engine distance target completes. See the Feedback sheet of the instruction table.
 
 ## Settings
 

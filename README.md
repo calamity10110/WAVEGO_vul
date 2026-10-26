@@ -26,6 +26,7 @@ The upper computer communicates with the lower computer (the robot's driver base
 - Photo taking
 - Video Recording
 - Person following (onboard MobileNet-SSD detector → discrete gait control with watchdog)
+- Parametric gait engine (T:117): crawl/walk/run with continuous speed, heading, stride, body height and distance targeting — auto-stop on target with a T:-117 completion event, wired through the web UI, telemetry and failsafe watchdog
 - Line following (gait-based, LINE tab — the wheeled-robot T:13 pipeline is disabled)
 - Voice assistant (persistent Moonshine ONNX ASR + phrase grammar → robot commands)
 - VLM goal control (onboard Intern-Decision decision engine, software-verified goal sessions)
@@ -129,7 +130,7 @@ Prebuilt, CI-tested artifacts — no compilation, no dependency hunting. Downloa
 [latest release page](https://github.com/calamity10110/WAVEGO_vul/releases/latest) and set the
 tag once (the examples below use it everywhere):
 
-    V=v0.1.1        # check the latest tag on the releases page
+    V=v0.3.1        # check the latest tag on the releases page
 
 ### 1. Flash the ESP32 mainboard (from a PC)
 
@@ -234,6 +235,11 @@ embodied-agent upper stack. If you know the stock build, these are the deltas:
 - Built with PlatformIO on Arduino core 3.x (pinned pioarduino `53.03.13`) instead of the
   stock Arduino-IDE 2.x-era firmware. The prebuilt `.bin` files in the release are built
   with this core — same one, no surprises.
+- **Parametric gait engine** (`GaitEngine.h/.cpp`, T:117): runtime crawl/walk/run selection,
+  continuous speed (stride × cadence decomposition), heading arcs, body-height easing and
+  open-loop distance targeting with auto-stop + `T:-117` completion event. Host-tested
+  (`wavego_pro_platformio/tests/test_gait_engine.cpp`, g++ in CI). Any pose/locomotion
+  command takes control back; `T:111 FB:0 LR:0` stays the universal stop.
 - ESP-NOW receive path hardened: zero-fill + bounded `memcpy` (`ESPNOW_HARDENING`, default
   on) and an optional sender-MAC allowlist (`receivedFromKnownMac`).
 - `getMac()` reads the WiFi interface MAC; INA219 power-monitor calls use the current
@@ -270,7 +276,8 @@ anything.
    `http://<robot-ip>:5000`.
 
 ### Everyday control
-- **Web UI** (`:5000`) — Control pad, Dashboard, Telemetry, Joystick, Gait tuning,
+- **Web UI** (`:5000`) — Control pad, Dashboard, Telemetry (with a gait-engine card),
+  Joystick, Gait tuning (live IK params + the T:117 engine card),
   Settings, Photos/Videos; the JSON console sends raw commands to the ESP32.
 - **Agent dashboard** (`:8000`, token printed on first `agent/run.sh`) — start/stop the
   embodied agent, watch the audit tail, ESTOP.
@@ -280,11 +287,15 @@ anything.
   realtime telemetry.
 
 ### Safety before the first walk
-- `T:111` gait commands are level-based: the ESP32 keeps executing the last one until a
-  new command arrives. If the controlling process dies mid-walk, the robot keeps walking —
-  the only stop is the power switch. Read the failsafe section in
+- `T:111` gait commands (and `T:117` engine walks) are level-based: the ESP32 keeps
+  executing the last one until a new command arrives. If the controlling process dies
+  mid-walk, the robot keeps walking — the only stop is the power switch. Read the failsafe
+  section in
   [`ugv_rpi/README.md`](ugv_rpi/README.md#known-limitation-motion-commands-outlive-the-controlling-process)
-  and install the failsafe daemon (`ugv_rpi/install_failsafe.sh`).
+  and install the failsafe daemon (`ugv_rpi/install_failsafe.sh`) — it watches both
+  `T:111` and `T:117` motion.
+- The gait engine's distance targeting (`"distance":mm`) is open-loop odometry: expect
+  roughly ±20% slip versus the commanded distance until you calibrate on your surface.
 - First tests on a stand (belly supported, feet off the ground), then on a leash.
 
 ## Connect the Raspberry Pi to the ESP32 Mainboard
@@ -345,7 +356,7 @@ All 48 commands are listed in [wavego_pro_instruction_table.xlsx](./wavego_pro_i
     base.rgb_light(0, 255, 0, 64)    # {"T":201,...} RGB LED
     base.base_oled(0, "hello")       # {"T":202,...} OLED line
 
-Core motion commands: `{"T":111,"FB":-1..1,"LR":-1..1}` vector gait, `{"T":112,"func":1..5}` StayLow/HandShake/Jump/steady on/off, `{"T":110}` stand, `{"T":114,"h":95}` height, `{"T":133,"X":..,"Y":..}` body pose (yaw/pitch).
+Core motion commands: `{"T":111,"FB":-1..1,"LR":-1..1}` vector gait, `{"T":117,"mode":0|1|2,"speed":0..1,"heading":-180..180,"height":75..110,"stride":0..40,"distance":mm}` parametric gait engine (all fields optional, distance auto-stops), `{"T":112,"func":1..5}` StayLow/HandShake/Jump/steady on/off, `{"T":110}` stand, `{"T":114,"h":95}` height, `{"T":133,"X":..,"Y":..}` body pose (yaw/pitch). `T:111 FB:0 LR:0` stops everything including the engine.
 
 ## Creating Custom Actions
 Two ways, no recompile vs full control:
