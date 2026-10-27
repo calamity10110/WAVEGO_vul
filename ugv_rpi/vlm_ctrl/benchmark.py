@@ -74,7 +74,7 @@ def make_frame_source(cfg, static_frame):
     from .capture import grab_frame
     cap = cfg.get("capture", {})
     url = cfg.get("frame_url", "http://127.0.0.1:5000/video_feed")
-    out = os.path.join(ensure_media(), "frame_latest.jpg")
+    out = os.path.join(ensure_media_dir(HERE), "frame_latest.jpg")
 
     def source():
         return grab_frame(url, out, resize_px=cap.get("resize_px", 448),

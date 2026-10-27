@@ -2,7 +2,8 @@
 from base_ctrl import BaseController, NullBaseController
 import threading
 import sys
-import yaml, os
+import yaml
+import os
 
 # raspberry pi version check.
 def is_raspberry_pi5():
@@ -58,8 +59,8 @@ base.base_oled(3, "Starting...")
 
 
 # Import necessary modules
-from flask import Flask, render_template, Response, request, jsonify, redirect, url_for, send_from_directory, send_file
-from flask_socketio import SocketIO, emit
+from flask import Flask, render_template, Response, request, jsonify, send_from_directory
+from flask_socketio import SocketIO
 from aiortc import RTCPeerConnection, RTCSessionDescription
 import json
 import uuid
@@ -275,7 +276,7 @@ def delete_video():
 
 # Video WebRTC
 # Function to manage connections
-def manage_connections(pc_id):
+def manage_connections(pc_id, pc):
     if len(active_pcs) >= MAX_CONNECTIONS:
         # If maximum connections reached, terminate the oldest connection
         oldest_pc_id = next(iter(active_pcs))
@@ -298,7 +299,7 @@ async def offer_async():
     pc_id = pc_id[:8]
 
     # Manage connections
-    manage_connections(pc_id)
+    manage_connections(pc_id, pc)
 
     # Create and set the local description
     await pc.createOffer(offer)
@@ -804,7 +805,7 @@ def update_data_loop():
         if eth0:
             base.base_oled(0, f"E:{eth0}")
         else:
-            base.base_oled(0, f"E: No Ethernet")
+            base.base_oled(0, "E: No Ethernet")
         if wlan:
             base.base_oled(1, f"W:{wlan}")
         else:
