@@ -9,7 +9,6 @@ absent, so the suite runs on any dev box and skips cleanly if app.py
 itself cannot import even with stubs.
 """
 
-import json
 import os
 import sys
 import types

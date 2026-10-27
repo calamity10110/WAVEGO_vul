@@ -25,7 +25,6 @@ Expected outcome:
 import os
 import random
 import string
-import subprocess
 import sys
 import tempfile
 

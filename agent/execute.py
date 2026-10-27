@@ -6,7 +6,6 @@ Purpose:
     goes through set_state → validator.execute().
 """
 
-import json
 
 from .tools import ToolRunner, ToolError
 

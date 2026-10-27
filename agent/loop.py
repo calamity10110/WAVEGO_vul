@@ -20,7 +20,6 @@ Expected outcome:
 """
 
 import json
-import os
 import time
 
 from .ingest import Ingest
@@ -28,9 +27,9 @@ from .perceive import Perceive
 from .deliberate import Deliberate
 from .execute import Execute
 from .outputs import Outputs
-from .validator import Validator, ValidationError
-from .model import VLModel, ModelError
-from .tools import ToolRunner, TOOL_SCHEMAS, ToolError
+from .validator import Validator
+from .model import VLModel
+from .tools import ToolRunner, TOOL_SCHEMAS
 
 MAX_CONSECUTIVE_FAILURES = 5
 

@@ -3,18 +3,21 @@ import imutils
 import mediapipe as mp
 import imageio
 import threading
-import datetime, time
+import datetime
+import time
 import numpy as np
 import math
-import yaml, os, json, subprocess
+import yaml
+import os
+import json
+import subprocess
 from collections import deque
 import textwrap
 from follow_ctrl import FollowPolicy, LineGaitPolicy
 
 # libraries for csi camera
 from picamera2 import Picamera2
-from picamera2.encoders import H264Encoder, Encoder
-from picamera2.outputs import FfmpegOutput
+from picamera2.encoders import H264Encoder
 
 # libraries for oak camera
 import depthai as dai
@@ -229,7 +232,7 @@ class OpencvFuncs():
                 input_frame = cv2.resize(input_frame, (640, 480))
             else:
                 input_frame = 255 * np.ones((480, 640, 3), dtype=np.uint8)
-                cv2.putText(input_frame, f"camera read failed... \nusb - csi - oak", 
+                cv2.putText(input_frame, "camera read failed... \nusb - csi - oak", 
                             (round(0.05*640), round(0.1*640 + 5 * 13)), 
                             cv2.FONT_HERSHEY_SIMPLEX, 0.369, (0, 0, 0), 1)
                 ret, buffer = cv2.imencode('.jpg', input_frame, [int(cv2.IMWRITE_JPEG_QUALITY), self.video_quality])

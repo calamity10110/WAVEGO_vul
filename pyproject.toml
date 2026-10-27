@@ -1,0 +1,32 @@
+[tool.pytest.ini_options]
+# Live packages only: `releases/` and `dist/` hold stale snapshots whose
+# test modules shadow the real ones (import-file-mismatch errors).
+testpaths = ["agent", "pet", "ugv_rpi", "wavego_agent"]
+norecursedirs = [
+    "releases",
+    "dist",
+    "graphify-out",
+    "logs",
+    ".*",
+    "__pycache__",
+]
+
+[tool.ruff]
+# Same story: snapshots and vendored libs are not this repo's code, and
+# tutorial notebooks (cn + en) are illustrative snippets, not lint targets.
+exclude = [
+    "releases",
+    "dist",
+    "graphify-out",
+    "logs",
+    ".pio",
+    "ugv_rpi/tutorial_cn",
+    "ugv_rpi/tutorial_en",
+    "wavego_pro_platformio",
+]
+target-version = "py311"
+
+[tool.ruff.lint]
+# Ruff's default rule families (pyflakes + core pycodestyle) — parity with
+# what the repo was already held to; new rule families should be opt-in.
+select = ["E4", "E7", "E9", "F"]

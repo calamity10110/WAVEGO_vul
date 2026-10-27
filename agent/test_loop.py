@@ -8,7 +8,6 @@ and the ESTOP early-bypass through the real run_once pipeline.
 import os
 import sys
 import tempfile
-import unittest
 from unittest.mock import patch
 
 import yaml

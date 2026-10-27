@@ -21,7 +21,6 @@ Expected outcome:
     Network failures raise ModelError; callers degrade gracefully.
 """
 
-import base64
 import json
 import urllib.request
 import urllib.error

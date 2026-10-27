@@ -1,5 +1,9 @@
-import os, psutil, time
-import subprocess, re, netifaces
+import os
+import psutil
+import time
+import subprocess
+import re
+import netifaces
 import threading
 
 curpath = os.path.realpath(__file__)
