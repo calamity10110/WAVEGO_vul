@@ -28,7 +28,7 @@ The upper computer communicates with the lower computer (the robot's driver base
 - Person following (onboard MobileNet-SSD detector → discrete gait control with watchdog)
 - Parametric gait engine (T:117): crawl/walk/run with continuous speed, heading, stride, body height and distance targeting — auto-stop on target with a T:-117 completion event, wired through the web UI, telemetry and failsafe watchdog
 - Line following (gait-based, LINE tab — the wheeled-robot T:13 pipeline is disabled)
-- Voice assistant (persistent Moonshine ONNX ASR + phrase grammar → robot commands)
+- Voice assistant (Xiaomi MiMo cloud ASR + TTS spoken feedback → phrase grammar → robot commands; offline Moonshine fallback)
 - VLM goal control (onboard Intern-Decision decision engine, software-verified goal sessions)
 - Telemetry tab (realtime joint positions, battery, host sensors, host/client error rings)
 - Control bypass API (`/api/cmd`, `/api/status`, `/api/cv`, `/api/config`, `/api/telemetry`, `/api/vlm`)
@@ -288,7 +288,8 @@ anything.
 - **Agent dashboard** (`:8000`, token printed on first `agent/run.sh`) — start/stop the
   embodied agent, watch the audit tail, ESTOP.
 - **Voice** (after `install_voice.sh`) — *forward / back / turn left / turn right /
-  stop*, *follow me*, *find the ball*.
+  stop*, *follow me*, *find the ball* — transcribed by the Xiaomi MiMo ASR API and
+  acknowledged with spoken MiMo TTS replies (key in `/etc/wavego/mimo.env`).
 - **JupyterLab** (`:8888`) — notebooks 30–31 walk through the HTTP bypass API and
   realtime telemetry.
 
@@ -406,7 +407,7 @@ Then trigger it with `{"T":112,"func":6}`. Build and flash with PlatformIO (`pio
 | Service | Start | Surface |
 |---|---|---|
 | Main app (`app.py`) | cron `@reboot`, port 5000 | tabbed Web UI (Control / Dashboard / Telemetry / Joystick / Gait / Settings / Photos / Videos), HTTP API, sole UART owner |
-| Voice assistant | `ugv_rpi/install_voice.sh` → `wavego-voice.service` | phrase grammar → `/api/cmd`, `/api/cv`, `/api/vlm` |
+| Voice assistant | `ugv_rpi/install_voice.sh` → `wavego-voice.service` | Xiaomi MiMo ASR/TTS API + phrase grammar → `/api/cmd`, `/api/cv`, `/api/vlm` (Moonshine offline fallback) |
 | VLM goal control | `ugv_rpi/install_vlm.sh` → `wavego-vlm.service` | goal sessions → software-verified gait commands |
 | Failsafe watchdog | `ugv_rpi/install_failsafe.sh` → `wavego-failsafe.service` | post-mortem UART stop if the main app dies within the motion grace window (no reflash needed) |
 | Embodied agent | `agent/setup.sh` then `agent/run.sh` (or `agent/install_agent.sh` → `wavego-agent.service`), port 8000 | token-auth agent dashboard; loop + dashboard share one validator (single UART owner alongside `app.py` — run the agent **instead of**, not next to, direct-control sessions) |
