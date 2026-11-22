@@ -1,5 +1,6 @@
 graphify-out/
 .sisyphus
+.zcode
 .vscode
 __pycache__/
 *.pyc
