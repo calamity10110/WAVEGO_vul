@@ -1044,6 +1044,22 @@
    }
   },
   {
+   "T": 117,
+   "cmd": "CMD_GAIT_ENGINE",
+   "group": "body_motion",
+   "params": "mode: int 0=crawl|1=walk|2=run; speed: float 0..1 (run capped 0.8 until verified); heading: float -180..180 (+left); height: float 75..110 mm; stride: float mm (0=mode default); distance: float mm (0=until stopped; >0 auto-stop at target). All fields optional; absent fields keep their current value",
+   "response": "{\"T\": -117, \"done\": true, \"traveled\": mm, \"cycles\": n} (one-shot on distance completion)",
+   "example": {
+    "T": 117,
+    "mode": 0,
+    "speed": 0.5,
+    "heading": 0,
+    "height": 95,
+    "stride": 0,
+    "distance": 200
+   }
+  },
+  {
    "T": 133,
    "cmd": "CMD_PT_CTRL",
    "group": "body_motion",
@@ -1476,6 +1492,16 @@
     "channel": 1,
     "sta_ssid": "",
     "sta_password": ""
+   }
+  },
+  {
+   "T": -117,
+   "description": "Gait-engine distance target completed: robot finished the cycle and stood. One-shot event (like T:-207), not periodic.",
+   "example": {
+    "T": -117,
+    "done": true,
+    "traveled": 200,
+    "cycles": 14
    }
   }
  ],
