@@ -1,13 +1,18 @@
 """WAVEGO Pro voice assistant — persistent process, keeps the ASR model loaded.
 
-Pipeline: USB mic (16 kHz mono) -> energy VAD with endpointing -> Moonshine
-ONNX transcription -> phrase match against voice_config.yaml grammar ->
-robot command via the ugv_rpi bypass API (/api/cmd, /api/cv).
+Pipeline: USB mic (16 kHz mono) -> energy VAD with endpointing -> ASR ->
+phrase match against voice_config.yaml grammar -> robot command via the
+ugv_rpi bypass API (/api/cmd, /api/cv, /api/vlm). ASR is Xiaomi MiMo
+(mimo-v2.5-asr, OpenAI-compatible endpoint) by default, with the local
+Moonshine ONNX model as offline fallback. Commands are acknowledged with
+MiMo TTS (mimo-v2.5-tts) spoken feedback in addition to the beeps.
 
-Runs as a systemd service (install_voice.sh) next to the main app. The ASR
-model is loaded exactly once at startup; per-utterance cost is inference only
-(spawning per command costs ~3.2 s of Python+ONNX init — that is the failure
-mode this process exists to avoid).
+Runs as a systemd service (install_voice.sh) next to the main app. The
+local model (when used) is loaded exactly once at startup; per-utterance
+cost is inference only (spawning per command costs ~3.2 s of Python+ONNX
+init — that is the failure mode this process exists to avoid). TTS runs on
+a worker thread so synthesis never stalls the VAD loop or the move-timeout
+counter.
 
 Movement commands (T:111 with nonzero FB/LR, or T:117 gait-engine with
 speed > 0) are level commands: the gait keeps walking until the next stop
@@ -21,6 +26,10 @@ import queue
 import subprocess
 import sys
 import time
+import base64
+import io
+import threading
+import wave
 
 import numpy as np
 import requests
@@ -151,25 +160,159 @@ class RobotApi:
         return r.ok
 
 
+def pcm16_to_wav(audio_i16, rate):
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(rate)
+        wf.writeframes(np.ascontiguousarray(audio_i16, dtype=np.int16).tobytes())
+    return buf.getvalue()
+
+
+class MiMoAsr:
+    def __init__(self, cfg):
+        self.base_url = (cfg.get("base_url") or "https://token-plan-sgp.xiaomimimo.com/v1").rstrip("/")
+        self.api_key = os.environ.get(cfg.get("api_key_env") or "MIMO_API_KEY", "")
+        self.model = cfg.get("model", "mimo-v2.5-asr")
+        self.language = cfg.get("language", "auto")
+        self.timeout = float(cfg.get("timeout_s", 15))
+
+    @property
+    def available(self):
+        return bool(self.api_key)
+
+    def transcribe(self, audio_i16, rate):
+        if not self.api_key:
+            raise RuntimeError("MIMO_API_KEY is not set")
+        b64 = base64.b64encode(pcm16_to_wav(audio_i16, rate)).decode("ascii")
+        payload = {
+            "model": self.model,
+            "messages": [{
+                "role": "user",
+                "content": [{
+                    "type": "input_audio",
+                    "input_audio": {"data": "data:audio/wav;base64," + b64},
+                }],
+            }],
+            "asr_options": {"language": self.language},
+        }
+        r = requests.post(self.base_url + "/chat/completions", json=payload,
+                          headers={"Authorization": "Bearer " + self.api_key},
+                          timeout=self.timeout)
+        r.raise_for_status()
+        content = r.json()["choices"][0]["message"].get("content") or ""
+        if isinstance(content, list):
+            content = "".join(p.get("text", "") for p in content if isinstance(p, dict))
+        return str(content).strip()
+
+
+class MiMoTts:
+    def __init__(self, cfg, aplay_device):
+        self.enabled = bool(cfg.get("enabled", True))
+        mimo = cfg.get("mimo") or {}
+        self.base_url = (mimo.get("base_url") or "https://token-plan-sgp.xiaomimimo.com/v1").rstrip("/")
+        self.api_key = os.environ.get(mimo.get("api_key_env") or "MIMO_API_KEY", "")
+        self.model = mimo.get("model", "mimo-v2.5-tts")
+        self.voice = mimo.get("voice", "Chloe")
+        self.audio_format = mimo.get("format", "wav")
+        self.style = mimo.get("style", "Clear, friendly, natural pace.")
+        self.timeout = float(mimo.get("timeout_s", 20))
+        self.aplay_device = cfg.get("aplay_device") or aplay_device
+        self.phrases = cfg.get("say") or {}
+        self._q = queue.Queue()
+        self._worker = None
+
+    def phrase(self, key, default=""):
+        return str(self.phrases.get(key) or default)
+
+    def say(self, text):
+        if not self.enabled or not text or not self.api_key:
+            return False
+        if self._worker is None:
+            self._worker = threading.Thread(target=self._loop, daemon=True)
+            self._worker.start()
+        self._q.put(str(text))
+        return True
+
+    def _loop(self):
+        while True:
+            text = self._q.get()
+            try:
+                self._speak(text)
+            except Exception as e:
+                log(f"tts failed: {e}")
+
+    def _speak(self, text):
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "user", "content": self.style},
+                {"role": "assistant", "content": str(text)},
+            ],
+            "audio": {"format": self.audio_format, "voice": self.voice},
+        }
+        r = requests.post(self.base_url + "/chat/completions", json=payload,
+                          headers={"Authorization": "Bearer " + self.api_key},
+                          timeout=self.timeout)
+        r.raise_for_status()
+        audio_b64 = r.json()["choices"][0]["message"]["audio"]["data"]
+        path = os.path.join(HERE, "sounds", "tts_last.wav")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as fh:
+            fh.write(base64.b64decode(audio_b64))
+        try:
+            subprocess.run(["aplay", "-q", "-D", self.aplay_device, path],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           timeout=30)
+        except FileNotFoundError:
+            pass
+        return True
+
+
 class VoiceAssistant:
     def __init__(self, cfg):
         self.cfg = cfg
         self.audio_q = queue.Queue()
         self.api = RobotApi(cfg.get("api_base", "http://127.0.0.1:5000"))
-        self.beeps = Beeps(cfg.get("speaker", {}).get("feedback", False),
-                           cfg.get("speaker", {}).get("aplay_device", "plughw:0,0"))
+        speaker = cfg.get("speaker", {})
+        self.beeps = Beeps(speaker.get("feedback", False),
+                           speaker.get("aplay_device", "plughw:0,0"))
         self.commands = cfg.get("commands", [])
         self.move_timeout_s = float(cfg.get("move_timeout_s", 3.0))
         self.vad = cfg.get("vad", {})
         self.stop_deadline = None
         self.model = None
+        asr_cfg = cfg.get("asr") or {}
+        self.mimo_asr = MiMoAsr(asr_cfg.get("mimo") or {}) \
+            if asr_cfg.get("provider") == "mimo" else None
+        self.fallback_moonshine = asr_cfg.get("fallback", "moonshine") != "none"
+        self.allow_local = self.mimo_asr is None
+        self.sample_rate = int((cfg.get("mic") or {}).get("sample_rate", 16000))
+        self.tts = MiMoTts(cfg.get("tts") or {}, speaker.get("aplay_device", "plughw:0,0"))
 
-    def load_model(self):
+    def _load_moonshine(self):
+        if self.model is not None:
+            return
         from useful_moonshine_onnx import MoonshineModel
         name = self.cfg.get("asr", {}).get("model", "tiny")
         log(f"loading moonshine model '{name}' (one-time)...")
         self.model = MoonshineModel(model_name=name)
         log("model loaded")
+
+    def load_model(self):
+        if self.mimo_asr is not None and self.mimo_asr.available:
+            self.allow_local = self.fallback_moonshine
+            extra = " (moonshine fallback armed)" if self.allow_local else ""
+            log(f"asr provider: mimo {self.mimo_asr.model} @ {self.mimo_asr.base_url}{extra}")
+            return
+        if self.mimo_asr is not None:
+            if not self.fallback_moonshine:
+                log("FATAL: MIMO_API_KEY not set and asr.fallback=none")
+                sys.exit(0)
+            log("MIMO_API_KEY not set — using local moonshine ASR")
+        self.allow_local = True
+        self._load_moonshine()
 
     def on_audio(self, indata, frames, time_info, status):
         if status:
@@ -196,12 +339,22 @@ class VoiceAssistant:
         else:
             self.stop_deadline = None
         self.beeps.play("ok" if ok else "err")
+        if ok:
+            self.tts.say(entry.get("say") or self.tts.phrase("ok", "Okay"))
 
     def transcribe(self, audio_i16):
-        audio = audio_i16.astype(np.float32) / 32768.0
-        texts = self.model.transcribe([audio])
-        text = texts[0] if isinstance(texts, list) else texts
-        return normalize(str(text))
+        text = ""
+        if self.mimo_asr is not None and self.mimo_asr.available:
+            try:
+                text = self.mimo_asr.transcribe(audio_i16, self.sample_rate)
+            except Exception as e:
+                log(f"mimo asr failed ({e})")
+        if not text and self.allow_local:
+            self._load_moonshine()
+            audio = audio_i16.astype(np.float32) / 32768.0
+            texts = self.model.transcribe([audio])
+            text = texts[0] if isinstance(texts, list) else texts
+        return normalize(str(text)) if text else ""
 
     def run(self):
         mic = self.cfg.get("mic", {})
@@ -241,6 +394,7 @@ class VoiceAssistant:
                     log("move timeout -> stop")
                     self.api.send_cmd({"T": 111, "FB": 0, "LR": 0})
                     self.stop_deadline = None
+                    self.tts.say(self.tts.phrase("stopped", "Stopped"))
 
                 if chunk is None:
                     continue
@@ -283,6 +437,7 @@ class VoiceAssistant:
                             self.execute(entry)
                         else:
                             self.beeps.play("err")
+                            self.tts.say(self.tts.phrase("unknown", "Sorry, I did not get that"))
 
 
 if __name__ == "__main__":

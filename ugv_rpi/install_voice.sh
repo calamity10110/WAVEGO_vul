@@ -74,13 +74,14 @@ write_unit() {
     echo "-- writing systemd unit $UNIT_PATH"
     sudo tee "$UNIT_PATH" >/dev/null <<EOF
 [Unit]
-Description=WAVEGO Pro voice assistant (persistent Moonshine ASR)
+Description=WAVEGO Pro voice assistant (MiMo ASR/TTS + Moonshine fallback)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 WorkingDirectory=$SCRIPT_DIR
+EnvironmentFile=-/etc/wavego/mimo.env
 ExecStart=$VENV_PY $SCRIPT_DIR/voice/voice_assistant.py
 Restart=on-failure
 RestartSec=3
@@ -112,6 +113,14 @@ install_service() {
 
     sudo systemctl enable --now "$UNIT_NAME"
     echo ""
+    if [ -f /etc/wavego/mimo.env ]; then
+        echo "== MiMo API key file found: /etc/wavego/mimo.env"
+    else
+        echo "== MiMo ASR/TTS needs an API key. Create it once:"
+        echo "     sudo mkdir -p /etc/wavego && sudo tee /etc/wavego/mimo.env <<<'MIMO_API_KEY=<your key>' && sudo chmod 600 /etc/wavego/mimo.env"
+        echo "     sudo systemctl restart $UNIT_NAME"
+        echo "   (without a key the assistant falls back to local Moonshine ASR, no TTS)"
+    fi
     echo "== installed. logs: journalctl -u $UNIT_NAME -f =="
 }
 

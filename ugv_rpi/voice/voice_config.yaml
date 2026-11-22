@@ -14,7 +14,31 @@ vad:
   cooldown_ms: 300
 
 asr:
-  model: tiny
+  provider: mimo        # mimo (Xiaomi MiMo cloud) | moonshine (local ONNX)
+  fallback: moonshine   # on API error or empty transcript: moonshine | none
+  model: tiny           # moonshine model name when the local path runs
+  mimo:
+    base_url: https://token-plan-sgp.xiaomimimo.com/v1
+    api_key_env: MIMO_API_KEY
+    model: mimo-v2.5-asr
+    language: auto
+    timeout_s: 15
+
+tts:
+  enabled: true
+  aplay_device: plughw:0,0
+  mimo:
+    base_url: https://token-plan-sgp.xiaomimimo.com/v1
+    api_key_env: MIMO_API_KEY
+    model: mimo-v2.5-tts
+    voice: Chloe
+    format: wav
+    style: "Clear, friendly, natural pace — cheerful robot dog."
+    timeout_s: 20
+  say:
+    ok: "Okay"
+    unknown: "Sorry, I did not get that"
+    stopped: "Stopped"
 
 speaker:
   feedback: true
