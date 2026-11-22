@@ -129,7 +129,7 @@ Operational recommendations:
 
 **No ESP32 reflash is required for anything in this project** — every feature runs on stock firmware. A firmware-side gait auto-timeout (stop when no `T:111`/`T:1` arrives within N ms, in `wavego_pro_platformio`) remains an *optional* future improvement: it would close the gap at the root and cover the hung-but-alive-app case that the host-side failsafe cannot. Until you choose to flash it, the failsafe daemon plus the manual rules above are the safety story.
 
-## ## Line following (gait-based)
+## Line following (gait-based)
 
 The **LINE** button (or `POST /api/cv {"mode":"line"}`, code `cv_line: 10311`) runs a line-follow mode that drives the **gait engine** with discrete `T:111` vectors — the original wheeled-robot `T:13` pipeline stays disabled (unsupported by this firmware). The camera samples a row at 75% frame height, computes the line's horizontal offset, and maps it to gait commands: centered → forward, off-center → turn toward the line, line lost for `line_lost_frames` (10) → stop. Tuning: `config.yaml` → `cv: line_deadzone / line_lost_frames` and the HSV `line_lower/line_upper` keys. Same watchdog + stop-on-exit + motion-lock lifecycle as person following.
 

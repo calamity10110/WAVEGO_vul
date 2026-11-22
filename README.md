@@ -36,6 +36,7 @@ The upper computer communicates with the lower computer (the robot's driver base
 - Embodied agent (`agent/`): VLM proposes hex states, deterministic validator is the sole motion authority, token-auth dashboard with estop-only write — see [Embodied agent](#embodied-agent)
 
 ## Contents
+- [Repository Layout](#repository-layout)
 - [Robot Schematic](#robot-schematic)
 - [Command Reference](#command-reference)
 - [Install from the release](#install-from-the-release-recommended)
@@ -46,6 +47,7 @@ The upper computer communicates with the lower computer (the robot's driver base
 - [Sending Commands](#sending-commands)
 - [Creating Custom Actions](#creating-custom-actions)
 - [Camera Installation and Usage](#camera-installation-and-usage)
+- [Onboard Services & API](#onboard-services--api)
 - [Embodied agent](#embodied-agent)
 
 ## Repository Layout
@@ -60,6 +62,10 @@ The upper computer communicates with the lower computer (the robot's driver base
 | `pet/` | WAVEGO Pet app: Qwen3-VL vision, brain/persona, display — drives the robot through `wavego_agent` — installer: `pet/install_pet.sh` |
 | `state_table.yaml` | Agent single source of truth: hex codebook (cross-checked against the instruction table), safety thresholds, tunables |
 | `wavego_pro_instruction_table.xlsx` / `.json` | Complete JSON command reference: 48 commands, feedback formats, unused/dead code audit |
+| `docs/` | Design/comparison write-ups (e.g. `comparison-report.md`: stock vs this fork vs Bittle/XGO2/Go2) |
+| `pyproject.toml` | Dev tooling: `pytest` scope (live packages only — `releases/`/`dist/` snapshots excluded) and `ruff` config |
+
+Dev checks from the repo root: `pytest` (agent + pet + ugv_rpi + wavego_agent suites) and `ruff check .`.
 
 ## Robot Schematic
 The system is a two-tier controller split by a JSON-over-UART contract:
