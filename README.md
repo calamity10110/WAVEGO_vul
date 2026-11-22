@@ -376,7 +376,7 @@ Two ways, no recompile vs full control:
 
 Edit steps with T:304/T:305/T:306, list with T:302, delete with T:309. The `boot` mission is executed at every power-on (holds WiFi config and zero calibration — edit with care).
 
-**B. Firmware action (C++, full IK control):** add a method to `BodyCtrl` in `wavego_pro_platformio/WAVEGO_Pro_PlatformIO/src/BodyCtrl.cpp/.h` and call it from the `T:112` dispatcher in `main.cpp`. The existing actions are the reference pattern — a body-height sweep with smooth interpolation:
+**B. Firmware action (C++, full IK control):** add a method to `BodyCtrl` in `wavego_pro_platformio/WAVEGO_Pro_PlatformIO/src/BodyCtrl.cpp` / `BodyCtrl.h` and call it from the `T:112` dispatcher in `main.cpp`. The existing actions are the reference pattern — a body-height sweep with smooth interpolation:
 
     void BodyCtrl::functionActionA(){
       for(float i = 0; i <= 1; i += 0.02){
@@ -414,7 +414,7 @@ Then trigger it with `{"T":112,"func":6}`. Build and flash with PlatformIO (`pio
 Full HTTP API reference (bypass API table): [`ugv_rpi/README.md`](ugv_rpi/README.md).
 Jupyter tutorials run at `:8888` (`tutorial_en/`, `tutorial_cn/`) — notebooks **30–31** cover the WAVEGO Pro HTTP API and realtime telemetry; notebooks **10, 11, 21** carry WAVEGO Pro notices (removed audio stack / unsupported line-following).
 
-## Embodied agent (`agent/`)
+## Embodied agent
 
 A local autonomy stack built on one rule: **the model proposes, the validator disposes**. The VLM never emits robot commands — it selects 6-char hex state codes (`set_state` tool call), and the deterministic validator is the only component allowed to translate a code into ESP32 JSON and write it to the UART. Every decision is audit-logged.
 
