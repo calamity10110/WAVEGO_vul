@@ -92,7 +92,7 @@ def run_cycle(engine, source, goal, verifier):
     if errors:
         raise RuntimeError(f"engine produced invalid decision: {errors}")
     ok, note = coherent(clean["label"], clean["reason"])
-    cmd = derive_command(clean["label"])
+    derive_command(clean["label"])
     agrees, _, _ = verifier.verify(clean, frame["hash"])
     t3 = time.perf_counter()
     return {

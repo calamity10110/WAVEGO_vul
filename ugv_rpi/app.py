@@ -390,7 +390,7 @@ def _cmd_cv(args):
                 pass
             else:
                 return
-        except:
+        except Exception:
             return
         try:
             upper_trimmed = args[3].strip("[]")
@@ -399,7 +399,7 @@ def _cmd_cv(args):
                 pass
             else:
                 return
-        except:
+        except Exception:
             return
         cvf.change_target_color(lower_nums, upper_nums)
     elif args[1] == '-s' or args[1] == '--select':
@@ -414,7 +414,7 @@ def _cmd_video(args):
     if args[1] == '-q' or args[1] == '--quality':
         try:
             int(args[2])
-        except:
+        except Exception:
             return
         cvf.set_video_quality(int(args[2]))
 
@@ -469,7 +469,7 @@ def _cmd_timelapse(args):
             move_time  = float(args[3])
             t_interval = float(args[4])
             loop_times = int(args[5])
-        except:
+        except Exception:
             return
         cvf.timelapse(move_speed, move_time, t_interval, loop_times)
     elif args[1] == '-e' or args[1] == '--end' or args[1] == '--stop':

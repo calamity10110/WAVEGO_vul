@@ -26,7 +26,7 @@ def test_claim_persists_across_two_frames():
 
 def test_claim_low_confidence_rejected():
     v = SoftwareVerifier()
-    h1, h2 = md5(b"f1"), md5(b"f2")
+    h1 = md5(b"f1")
     assert v.verify(dec("reached", id_conf=0.5), h1)[0] is False
 
 

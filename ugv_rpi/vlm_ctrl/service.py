@@ -132,7 +132,6 @@ class VlmService:
                     self._finish(loop, gate)
                     return
                 frame = self._capture()
-                engine_name = loop.next_attempt_engine()
                 decision, failure = self._decide(loop.goal, frame, feedback)
                 if decision is None:
                     directive = loop.on_attempt_failed(

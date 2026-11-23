@@ -281,7 +281,7 @@ def _live_controller(opens, instances):
 
 def test_controller_init_wiring():
     opens, instances = [], []
-    b = _live_controller(opens, instances)
+    _live_controller(opens, instances)
     assert opens == [("/dev/fake", 115200)]
 
 

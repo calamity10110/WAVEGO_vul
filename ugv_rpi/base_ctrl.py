@@ -84,7 +84,7 @@ class ReadLine:
 		self.s.reset_input_buffer()
 
 	def read_sensor_data(self):
-		if self.sensor_data_ser == None:
+		if self.sensor_data_ser is None:
 			return
 
 		try:
@@ -114,7 +114,6 @@ class ReadLine:
 		for i in range(0, self.ANGLE_PER_FRAME):
 			offset = 6 + i * 3
 			distance = data[offset+1] << 8 | data[offset]
-			confidence = data[offset+2]
 			# lidar_angles.append(np.radians(start_angle + i * 0.167))
 			self.lidar_angles.append(np.radians(start_angle + i * 0.83333 + 180))
 			# lidar_angles.append(np.radians(start_angle + end_angle))
@@ -125,7 +124,7 @@ class ReadLine:
 		return start_angle
 
 	def lidar_data_recv(self):
-		if self.lidar_ser == None:
+		if self.lidar_ser is None:
 			return
 		try:
 			while True:
