@@ -787,13 +787,7 @@ var move_buttons = {
     left: 0,
     right: 0,
 }
-function moveProcess() {
-    var forwardButton  = move_buttons.forward;
-    var backwardButton = move_buttons.backward;
-    var leftButton  = move_buttons.left;
-    var rightButton = move_buttons.right;
-
-    // Speed Ctrl
+function applyMoveSpeed() {
     if (move_buttons.low == 1){
         speedCtrl(min_rate);
     } else if (move_buttons.middle == 1){
@@ -801,51 +795,31 @@ function moveProcess() {
     } else if (move_buttons.fast == 1){
         speedCtrl(max_rate);
     }
+}
 
-    // if(move_buttons.shift == 1) {
-    //     speed_rate = max_rate;
-    //     var spdCtrlBtn = document.getElementById("speed_ctrl_btn");
-    //     var spdbuttons = spdCtrlBtn.getElementsByTagName("button");
-    //     removeButtonsClass(spdbuttons);
-    //     if (speed_rate <= 0.33) {
-    //         spdbuttons[0].classList.add("ctl_btn_active");
-    //     } else if (speed_rate > 0.33 && speed_rate < 0.66) {
-    //         spdbuttons[1].classList.add("ctl_btn_active");
-    //     } else if (speed_rate >= 0.66) {
-    //         spdbuttons[2].classList.add("ctl_btn_active");
-    //     }
-    // } else {
-    //     speedCtrl(defaultSpeed);
-    // }
+function moveVector(forwardButton, backwardButton, leftButton, rightButton) {
+    var table = {
+        "0000": [ 0,  0],
+        "1000": [ max_speed,  max_speed],
+        "0100": [-max_speed, -max_speed],
+        "0010": [-max_speed,  max_speed],
+        "0001": [ max_speed, -max_speed],
+        "1010": [ slow_speed,  max_speed],
+        "1001": [ max_speed,  slow_speed],
+        "0110": [-slow_speed, -max_speed],
+        "0101": [-max_speed, -slow_speed]
+    };
+    return table["" + forwardButton + backwardButton + leftButton + rightButton] || null;
+}
 
-    // Movtion Ctrl
-    if (forwardButton == 0 && backwardButton == 0 && leftButton == 0 && rightButton == 0) {
-        heartbeat_left  =  0;
-        heartbeat_right =  0;
-    }else if (forwardButton == 1 && backwardButton == 0 && leftButton == 0 && rightButton == 0){
-        heartbeat_left  =  max_speed;
-        heartbeat_right =  max_speed;
-    }else if (forwardButton == 0 && backwardButton == 1 && leftButton == 0 && rightButton == 0){
-        heartbeat_left  = -max_speed;
-        heartbeat_right = -max_speed;
-    }else if (forwardButton == 0 && backwardButton == 0 && leftButton == 1 && rightButton == 0){
-        heartbeat_left  = -max_speed;
-        heartbeat_right =  max_speed;
-    }else if (forwardButton == 0 && backwardButton == 0 && leftButton == 0 && rightButton == 1){
-        heartbeat_left  =  max_speed;
-        heartbeat_right = -max_speed;
-    }else if (forwardButton == 1 && backwardButton == 0 && leftButton == 1 && rightButton == 0){
-        heartbeat_left  =  slow_speed;
-        heartbeat_right =  max_speed;
-    }else if (forwardButton == 1 && backwardButton == 0 && leftButton == 0 && rightButton == 1){
-        heartbeat_left  =  max_speed;
-        heartbeat_right =  slow_speed;
-    }else if (forwardButton == 0 && backwardButton == 1 && leftButton == 1 && rightButton == 0){
-        heartbeat_left  = -slow_speed;
-        heartbeat_right = -max_speed;
-    }else if (forwardButton == 0 && backwardButton == 1 && leftButton == 0 && rightButton == 1){
-        heartbeat_left  = -max_speed;
-        heartbeat_right = -slow_speed;
+function moveProcess() {
+    applyMoveSpeed();
+
+    var vec = moveVector(move_buttons.forward, move_buttons.backward,
+                         move_buttons.left, move_buttons.right);
+    if (vec !== null) {
+        heartbeat_left  = vec[0];
+        heartbeat_right = vec[1];
     }
 
     cmdJsonCmd({'T':cmd_movition_ctrl,'L':heartbeat_left,'R':heartbeat_right});
