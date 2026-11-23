@@ -11,7 +11,7 @@ upper-computer app, plus an embodied-agent stack. ~28.5 K lines across 5 compone
 
 | Component | Path | Size | Role |
 |---|---|---|---|
-| RPi app | `ugv_rpi/` | 15 451 L / 56 files | Flask + SocketIO + OpenCV web UI, sole UART owner, bypass HTTP API |
+| RPi app | `ugv_rpi/` | 15 629 L / 57 files | Flask + SocketIO + OpenCV web UI, sole UART owner, bypass HTTP API |
 | ESP32 firmware | `wavego_pro_platformio/` | 4 486 L / 18 files | IK gait engine (T:117), servos, OLED, RGB, missions, ESP-NOW (PlatformIO) |
 | Embodied agent | `agent/` | 3 321 L / 28 files | VLM proposes hex states → deterministic validator is the only motion authority |
 | Pet app | `pet/` | 3 169 L / 21 files | Qwen3-VL persona app driving the robot via `wavego_agent` |
@@ -60,19 +60,21 @@ height, stride, distance), `112` functions (sit/handshake/jump/steady), `1` diff
 
 ## Dev checks
 
-- `pytest` — 396 tests (agent, pet, ugv_rpi, wavego_agent), scoped by `pyproject.toml`
-- `ruff check .` — 31 pre-existing findings (bare excepts/unused vars in `app.py`, `cv_ctrl.py`, …)
+- `pytest` — 407 tests (agent, pet, ugv_rpi, wavego_agent), scoped by `pyproject.toml`
+- `ruff check .` — clean (0 findings; boot-order E402 in `app.py` is a documented per-file ignore)
+- Coverage: `pytest --cov=. --cov-context=test` → `coverage lcov -o coverage.lcov` →
+  `repowise coverage add coverage.lcov .coverage` (73 % line coverage, test-to-code map ingested)
 - Firmware: PlatformIO build + `tests/test_gait_engine.cpp` host g++ step in CI
-- Repowise: index synced at HEAD, doc-drift 0; `repowise next` top item = split `moveProcess`
-  (CCN 40, `control.js`)
+- Repowise: index synced at HEAD, doc-drift 0; coverage folded into health scores
 
 ## Tech debt (top 5)
 
-1. `moveProcess` CCN 40 in `ugv_rpi/templates/control.js` — split at the direction-combo block
-2. `ugv_rpi/cv_ctrl.py` health 1.0/10 — god class `OpencvFuncs`
-3. No coverage report (every repowise test action says "unknown")
+1. ~~`moveProcess` CCN 40~~ — split into `applyMoveSpeed` + table-driven `moveVector` (16-combo verified)
+2. `ugv_rpi/cv_ctrl.py` health 1.0/10 — camera chain + pure helpers extracted (`cv_camera.py`,
+   complexity 27→23); remaining detector/OSD methods are hardware-bound (need a bench session)
+3. ~~No coverage report~~ — 73 % line coverage + test-to-code map ingested into repowise
 4. Hardware bench verification of gait-engine mode tables (RUN stability, distance accuracy)
-5. 31 pre-existing ruff findings; dead-code flags mostly false positives (entry points, pin tables)
+5. ~~31 pre-existing ruff findings~~ — all fixed; dead-code flags mostly false positives (entry points, pin tables)
 
 ## Docs map
 

@@ -65,7 +65,7 @@ The upper computer communicates with the lower computer (the robot's driver base
 | `docs/` | Design/comparison write-ups (e.g. `comparison-report.md`: stock vs this fork vs Bittle/XGO2/Go2) |
 | `pyproject.toml` | Dev tooling: `pytest` scope (live packages only — `releases/`/`dist/` snapshots excluded) and `ruff` config |
 
-Dev checks from the repo root: `pytest` (agent + pet + ugv_rpi + wavego_agent suites) and `ruff check .`.
+Dev checks from the repo root: `pytest` (agent + pet + ugv_rpi + wavego_agent suites), `ruff check .`, and coverage via `pytest --cov=. --cov-context=test` + `repowise coverage add coverage.lcov .coverage`.
 
 ## Robot Schematic
 The system is a two-tier controller split by a JSON-over-UART contract:

@@ -230,14 +230,17 @@ ugv_rpi/
 ├── settings_api.py      # /api/config whitelist: dotted keys -> type/range validation (pure)
 ├── base_ctrl.py         # BaseController: threaded serial JSON queue, ReadLine parser,
 │                        #   emitters (T:1/133/201/202), breath_light demo
-├── cv_ctrl.py           # CameraFlinger/CV engine: USB→CSI→OAK detect, Picamera2/OpenCV,
-│                        #   face/color/motion/gesture/line modes, person-follow mode,
-│                        #   WebRTC frames, photo/video capture, timelapse, cv_light_mode
+├── cv_ctrl.py           # CameraFlinger/CV engine: face/color/motion/gesture/line modes,
+│                        #   person-follow mode, WebRTC frames, photo/video capture,
+│                        #   timelapse, cv_light_mode (camera chain lives in cv_camera.py)
+├── cv_camera.py         # CameraRack: usb→csi→oak detection + init + per-frame read with
+│                        #   placeholder-frame degradation (extracted from cv_ctrl)
 ├── follow_ctrl.py       # person-follow control policy: dead-zone, hysteresis band,
 │                        #   lost-frame counter → discrete T:111 FB/LR decisions (pure logic)
 ├── tests/               # unit tests for follow_ctrl (run: python -m pytest tests/)
-├── voice/               # persistent voice assistant: Moonshine ONNX + energy VAD +
-│                        #   voice_config.yaml grammar → /api/cmd + /api/cv + /api/vlm
+├── voice/               # persistent voice assistant: Xiaomi MiMo ASR/TTS API (cloud) with
+│                        #   Moonshine ONNX fallback + energy VAD + voice_config.yaml
+│                        #   grammar → /api/cmd + /api/cv + /api/vlm
 ├── install_voice.sh     # voice service installer: systemd unit, speaker volume fix,
 │                        #   autostart duplicate scanner (--check-autostart/--clean-listen)
 ├── vlm_ctrl/            # VLM goal control: Intern-Decision engine, goal-session state

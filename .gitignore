@@ -17,3 +17,8 @@ ugv_rpi/releases/
 
 # release/build artifacts — canonical copies live on the GitHub Releases page
 /dist/
+
+# coverage reports (regenerate: pytest --cov=. --cov-context=test)
+coverage.json
+coverage.lcov
+.coverage
