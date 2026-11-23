@@ -10,23 +10,47 @@ import math
 import yaml
 import os
 import json
-import subprocess
 from collections import deque
 import textwrap
 from follow_ctrl import FollowPolicy, LineGaitPolicy
 
-# libraries for csi camera
-from picamera2 import Picamera2
-from picamera2.encoders import H264Encoder
-
-# libraries for oak camera
-import depthai as dai
+from cv_camera import CameraRack
 
 # config file.
 curpath = os.path.realpath(__file__)
 thisPath = os.path.dirname(curpath)
 with open(thisPath + '/config.yaml', 'r') as yaml_file:
     f = yaml.safe_load(yaml_file)
+
+
+def calculate_distance(lm1, lm2):
+    return ((lm1.x - lm2.x) ** 2 + (lm1.y - lm2.y) ** 2) ** 0.5
+
+
+def calculate_angle(A1, A2, B1, B2):
+    vector_A = (A2.x - A1.x, A2.y - A1.y)
+    vector_B = (B2.x - B1.x, B2.y - B1.y)
+
+    dot_product = vector_A[0] * vector_B[0] + vector_A[1] * vector_B[1]
+
+    magnitude_A = math.sqrt(vector_A[0]**2 + vector_A[1]**2)
+    magnitude_B = math.sqrt(vector_B[0]**2 + vector_B[1]**2)
+
+    angle = math.acos(dot_product / (magnitude_A * magnitude_B))
+
+    angle_deg = math.degrees(angle)
+
+    return angle_deg
+
+
+def format_json_numbers(obj):
+    if isinstance(obj, dict):
+        return {k: format_json_numbers(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [format_json_numbers(elem) for elem in obj]
+    elif isinstance(obj, float):
+        return round(obj, 2)
+    return obj
 
 
 class OpencvFuncs():
@@ -170,84 +194,14 @@ class OpencvFuncs():
         # osd settings
         self.add_osd = f['base_config']['add_osd']
 
-        # camera type detection
-        self.usb_camera_connected = self.usb_camera_detection()
-        self.csi_camera_connected = False
-        self.oak_camera_connected = False
-
-        # usb camera init
-        if self.usb_camera_connected:
-            self.camera = cv2.VideoCapture(0)
-            self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, f['video']['default_res_w'])
-            self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, f['video']['default_res_h'])
-
-        # csi camera init
-        if not self.usb_camera_connected:
-            print("init csi camera.")
-            try:
-                self.encoder = H264Encoder(1000000)
-                self.picam2 = Picamera2()
-                self.picam2.configure(self.picam2.create_video_configuration(main={"format": 'XRGB8888', "size": (f['video']['default_res_w'], f['video']['default_res_h'])}))
-                self.picam2.start()
-                self.csi_camera_connected = True
-            except:
-                self.csi_camera_connected = False
-
-        #oak camera init 
-        if not self.usb_camera_connected and not self.csi_camera_connected:
-            try:
-                self.pipeline = dai.Pipeline()
-
-                self.camRgb = self.pipeline.createColorCamera()
-                self.camRgb.setBoardSocket(dai.CameraBoardSocket.RGB)
-                self.camRgb.setInterleaved(False)
-                # self.camRgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_480_P)
-                self.camRgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_720_P)
-
-                self.xout = self.pipeline.createXLinkOut()
-                self.xout.setStreamName("video")
-                self.camRgb.video.link(self.xout.input)
-
-                self.device = dai.Device(self.pipeline)
-                self.output_queue = self.device.getOutputQueue(name="video", maxSize=8, blocking=False)
-
-                self.oak_camera_connected = True
-            except Exception as e:
-                print(f"[cv_ctrl.frame_process] error: {e}")
-                self.oak_camera_connected = False
+        # camera type detection + usb -> csi -> oak chain
+        self.cam = CameraRack(f['video']['default_res_w'], f['video']['default_res_h'])
 
 
     def frame_process(self):
-        try:
-            if self.usb_camera_connected:
-                success, input_frame = self.camera.read()
-                if not success:
-                    self.camera.release()
-                    time.sleep(1)
-                    self.camera = cv2.VideoCapture(0)
-            elif self.csi_camera_connected:
-                input_frame = self.picam2.capture_array()
-            elif self.oak_camera_connected:
-                input_frame = self.output_queue.get().getCvFrame()
-                input_frame = cv2.resize(input_frame, (640, 480))
-            else:
-                input_frame = 255 * np.ones((480, 640, 3), dtype=np.uint8)
-                cv2.putText(input_frame, "camera read failed... \nusb - csi - oak", 
-                            (round(0.05*640), round(0.1*640 + 5 * 13)), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.369, (0, 0, 0), 1)
-                ret, buffer = cv2.imencode('.jpg', input_frame, [int(cv2.IMWRITE_JPEG_QUALITY), self.video_quality])
-                input_frame = buffer.tobytes()
-                time.sleep(1)
-                return input_frame
-        except Exception as e:
-            print(f"[cv_ctrl.frame_process] error: {e}")
-            input_frame = 255 * np.ones((480, 640, 3), dtype=np.uint8)
-            cv2.putText(input_frame, f"camera read failed... \n{e}", 
-                        (round(0.05*640), round(0.1*640 + 5 * 13)), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.369, (0, 0, 0), 1)
-            ret, buffer = cv2.imencode('.jpg', input_frame, [int(cv2.IMWRITE_JPEG_QUALITY), self.video_quality])
-            input_frame = buffer.tobytes()
-            return input_frame
+        input_frame, fallback_frame = self.cam.read(self.video_quality)
+        if fallback_frame is not None:
+            return fallback_frame
 
         # opencv funcs
         if self.cv_mode != f['code']['cv_none']:
@@ -292,7 +246,7 @@ class OpencvFuncs():
                 cv2.imwrite(photo_filename, input_frame)
                 self.picture_capture_flag = False
                 print(photo_filename)
-            except:
+            except Exception:
                 pass
 
         # record video
@@ -327,7 +281,7 @@ class OpencvFuncs():
         try:
             ret, buffer = cv2.imencode('.jpg', input_frame, [int(cv2.IMWRITE_JPEG_QUALITY), self.video_quality])
             input_frame = buffer.tobytes()
-        except:
+        except Exception:
             pass
 
         # get fps
@@ -340,16 +294,6 @@ class OpencvFuncs():
         # output frame
         return input_frame
 
-
-
-    def usb_camera_detection(self):
-        lsusb_output = subprocess.check_output(["lsusb"]).decode("utf-8")
-        if "Camera" in lsusb_output:
-            print("USB Camera connected")
-            return True
-        else:
-            print("USB Camera not connected")
-            return False
 
 
     def osd_render(self, osd_frame):
@@ -432,7 +376,7 @@ class OpencvFuncs():
             return
         try:
             cv2.accumulateWeighted(gray, self.avg, 0.5)
-        except:
+        except Exception:
             return
         frameDelta = cv2.absdiff(gray, cv2.convertScaleAbs(self.avg))
 
@@ -775,31 +719,6 @@ class OpencvFuncs():
         self.overlay = np.zeros_like(img)
         self.overlay = overlay_buffer
 
-    def calculate_distance(self, lm1, lm2):
-        return ((lm1.x - lm2.x) ** 2 + (lm1.y - lm2.y) ** 2) ** 0.5
-
-    def calculate_angle(self, A1, A2, B1, B2):
-        vector_A = (A2.x - A1.x, A2.y - A1.y)
-        vector_B = (B2.x - B1.x, B2.y - B1.y)
-
-        dot_product = vector_A[0] * vector_B[0] + vector_A[1] * vector_B[1]
-
-        magnitude_A = math.sqrt(vector_A[0]**2 + vector_A[1]**2)
-        magnitude_B = math.sqrt(vector_B[0]**2 + vector_B[1]**2)
-
-        angle = math.acos(dot_product / (magnitude_A * magnitude_B))
-
-        angle_deg = math.degrees(angle)
-
-        return angle_deg
-
-
-    def map_value(self, value, original_min, original_max, new_min, new_max):
-        if original_max == 0:
-            return 0
-        return (value - original_min) / (original_max - original_min) * (new_max - new_min) + new_min
-
-
     def mp_detect_hand(self, img):
         height, width = img.shape[:2]
         center_x, center_y = width // 2, height // 2
@@ -809,7 +728,6 @@ class OpencvFuncs():
 
         # overlay_buffer = np.zeros_like(imgRGB)
         overlay_bgr = np.zeros((img.shape[0], img.shape[1], 3), dtype=np.uint8)
-        get_pwm = 0
 
         if results.multi_hand_landmarks:
             for handLms in results.multi_hand_landmarks:
@@ -825,22 +743,22 @@ class OpencvFuncs():
                 target_pos = handLms.landmark[self.mpHands.HandLandmark.INDEX_FINGER_TIP]
                 # print(f"x:{target_pos.x} y:{target_pos.y}")
                 if not self.cv_movtion_lock:
-                    distance = self.gimbal_track(center_x, center_y, width*target_pos.x, height*target_pos.y, self.track_faces_iterate)
+                    self.gimbal_track(center_x, center_y, width*target_pos.x, height*target_pos.y, self.track_faces_iterate)
 
                 # check hand gs
-                pinky_finger_gs = self.calculate_angle(
+                pinky_finger_gs = calculate_angle(
                                             handLms.landmark[self.mpHands.HandLandmark.WRIST],
                                             handLms.landmark[self.mpHands.HandLandmark.PINKY_MCP],
                                             handLms.landmark[self.mpHands.HandLandmark.PINKY_MCP],
                                             handLms.landmark[self.mpHands.HandLandmark.PINKY_TIP])
 
-                index_finger_gs = self.calculate_angle(
+                index_finger_gs = calculate_angle(
                                             handLms.landmark[self.mpHands.HandLandmark.INDEX_FINGER_MCP],
                                             handLms.landmark[self.mpHands.HandLandmark.INDEX_FINGER_PIP],
                                             handLms.landmark[self.mpHands.HandLandmark.INDEX_FINGER_PIP],
                                             handLms.landmark[self.mpHands.HandLandmark.INDEX_FINGER_TIP])
 
-                middle_finger_gs = self.calculate_angle(
+                middle_finger_gs = calculate_angle(
                                             handLms.landmark[self.mpHands.HandLandmark.MIDDLE_FINGER_MCP],
                                             handLms.landmark[self.mpHands.HandLandmark.MIDDLE_FINGER_PIP],
                                             handLms.landmark[self.mpHands.HandLandmark.MIDDLE_FINGER_PIP],
@@ -850,7 +768,7 @@ class OpencvFuncs():
                 if middle_finger_gs > 20 and pinky_finger_gs > 90:
                     cv2.putText(overlay_bgr, ' GS: LED Ctrl', (center_x+50, center_y+100), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 128, 128), 1)
-                    tips_distance = self.calculate_distance(handLms.landmark[self.mpHands.HandLandmark.INDEX_FINGER_TIP],
+                    tips_distance = calculate_distance(handLms.landmark[self.mpHands.HandLandmark.INDEX_FINGER_TIP],
                         handLms.landmark[self.mpHands.HandLandmark.THUMB_TIP])
 
                     if index_finger_gs < 3:
@@ -1052,27 +970,18 @@ class OpencvFuncs():
         self.show_info_flag = True
 
     def show_recv_info(self, input_cmd):
-        if input_cmd == True:
+        if input_cmd:
             self.show_base_info_flag = True
         else:
             self.show_base_info_flag = False
         print(self.show_base_info_flag)
-
-    def format_json_numbers(self, obj):
-        if isinstance(obj, dict):
-            return {k: self.format_json_numbers(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [self.format_json_numbers(elem) for elem in obj]
-        elif isinstance(obj, float):
-            return round(obj, 2)
-        return obj
 
     def update_base_data(self, input_data):
         if not input_data:
             return
         try:
             if self.show_base_info_flag:
-                self.recv_deque.appendleft(json.dumps(self.format_json_numbers(input_data)))
+                self.recv_deque.appendleft(json.dumps(format_json_numbers(input_data)))
             if input_data['T'] == 1003:
                 self.info_deque.appendleft({'text':json.dumps(input_data['mac']),'color':(16,64,255),'size':0.5})
                 wrapped_lines = textwrap.wrap(json.dumps(input_data['megs']), self.recv_line_max)
